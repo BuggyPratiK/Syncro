@@ -33,4 +33,4 @@ jobs:
           aws-region: ap-southeast-2
 
       - name: CDK Deploy
-        run: npm run cdk:deploy
+        run: npx aws-cdk deploy --require-approval never
