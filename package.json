@@ -14,7 +14,7 @@
         "test:watch": "jest --watch",
         "test:coverage": "jest --coverage",
         "cdk": "cdk",
-        "cdk:synth": "cdk synth",
+        "cdk:synth": "npx aws-cdk synth",
         "cdk:diff": "cdk diff",
         "cdk:deploy": "cdk deploy --require-approval never",
         "cdk:destroy": "cdk destroy",
