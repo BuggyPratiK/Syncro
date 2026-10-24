@@ -1,0 +1,21 @@
+﻿{
+  "app": "npx ts-node --project tsconfig.infra.json infra/bin/syncro.ts",
+  "watch": {
+    "include": ["**"],
+    "exclude": [
+      "README.md",
+      "cdk*.json",
+      "**/*.d.ts",
+      "**/*.js",
+      "tsconfig*.json",
+      "package*.json",
+      ".git/",
+      "dist/"
+    ]
+  },
+  "context": {
+    "@aws-cdk/aws-lambda:recognizeLayerVersion": true,
+    "@aws-cdk/core:checkSecretUsage": true,
+    "@aws-cdk/aws-apigateway:disableCloudWatchRole": false
+  }
+}

@@ -1,0 +1,35 @@
+# Dependencies
+node_modules/
+
+# Build and CDK outputs
+dist/
+infra/dist/
+cdk.out/
+**/cdk.out/
+*.js.map
+*.d.ts
+
+# Environment secrets and private keys - NEVER commit these
+.env
+.env.*
+!.env.example
+*.pem
+
+# Test and coverage artifacts
+coverage/
+.nyc_output/
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# OS and IDE files
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# Local credentials & scratch
+.aws/
