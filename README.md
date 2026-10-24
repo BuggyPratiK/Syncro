@@ -1,13 +1,19 @@
-﻿# Syncro
+﻿<p align="center">
+  <img src="assets/syncro-banner.png" alt="Syncro Wordmark" width="600"/>
+</p>
 
-> **A Serverless GitHub Automation Bot** that monitors repository commits and broadcasts rich, real-time update notifications to contributor channels (Discord) - built on an **Always-Free AWS Serverless Architecture** ($0/month indefinitely).
+<p align="center">
+  <strong>A Serverless GitHub Automation Bot</strong> that monitors repository commits and broadcasts rich, real-time update notifications to contributor channels (Discord) — built on an <strong>Always-Free AWS Serverless Architecture</strong> ($0/month indefinitely).
+</p>
 
-[![CI](https://github.com/pratik/Syncro/actions/workflows/ci.yml/badge.svg)](https://github.com/pratik/Syncro/actions)
-[![TypeScript](https://img.shields.io/badge/TypeScript-5.6-blue?logo=typescript)](https://www.typescriptlang.org/)
-[![AWS Serverless](https://img.shields.io/badge/AWS-Serverless-orange?logo=amazon-aws)](https://aws.amazon.com/)
-[![DynamoDB](https://img.shields.io/badge/Amazon-DynamoDB-4053D6?logo=amazon-dynamodb)](https://aws.amazon.com/dynamodb/)
-[![Jest Coverage](https://img.shields.io/badge/Coverage-91%25-brightgreen?logo=jest)](https://jestjs.io/)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+<p align="center">
+  <a href="https://github.com/BuggyPratiK/Syncro/actions"><img src="https://github.com/BuggyPratiK/Syncro/actions/workflows/deploy.yml/badge.svg" alt="Deploy Status"/></a>
+  <a href="https://www.typescriptlang.org/"><img src="https://img.shields.io/badge/TypeScript-5.6-blue?logo=typescript" alt="TypeScript"/></a>
+  <a href="https://aws.amazon.com/"><img src="https://img.shields.io/badge/AWS-Serverless-orange?logo=amazon-aws" alt="AWS Serverless"/></a>
+  <a href="https://aws.amazon.com/dynamodb/"><img src="https://img.shields.io/badge/Amazon-DynamoDB-4053D6?logo=amazon-dynamodb" alt="DynamoDB"/></a>
+  <a href="https://jestjs.io/"><img src="https://img.shields.io/badge/Coverage-91%25-brightgreen?logo=jest" alt="Jest Coverage"/></a>
+  <a href="https://opensource.org/licenses/MIT"><img src="https://img.shields.io/badge/License-MIT-yellow.svg" alt="License: MIT"/></a>
+</p>
 
 ---
 
@@ -79,7 +85,7 @@ Syncro runs 100% serverless across permanent AWS Always-Free tier services:
 ### 1. Installation
 
 ```bash
-git clone https://github.com/<your-username>/Syncro.git
+git clone https://github.com/BuggyPratiK/Syncro.git
 cd Syncro
 npm install
 ```
