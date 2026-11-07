@@ -1,6 +1,5 @@
 ﻿/**
  * Notification Provider Contract
- * All providers (Discord, Telegram, Slack) must implement this interface.
  */
 
 export type NotificationChannel = "discord" | "telegram" | "slack" | "whatsapp";

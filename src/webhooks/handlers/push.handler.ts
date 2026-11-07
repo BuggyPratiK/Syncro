@@ -1,7 +1,6 @@
 ﻿/**
  * Push event handler.
  * Orchestrates the full pipeline for a GitHub push event:
- * validate → check repo config → enrich → persist → notify.
  */
 
 import { GitHubPushPayload } from "../../types/github.types";

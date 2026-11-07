@@ -56,14 +56,14 @@ async function handleGitHubWebhook(
   event: APIGatewayProxyEvent,
   requestId: string,
 ): Promise<APIGatewayProxyResult> {
-  // Step 1: Validate signature BEFORE any processing
+  //Validate signature BEFORE any processing
   const validation = validateWebhookSignature(event);
   if (!validation.valid) {
     logger.warn("Webhook signature validation failed", { error: validation.error, requestId });
     return response(401, { error: "Unauthorized" }, requestId);
   }
 
-  // Step 2: Parse payload
+  //Parse payload
   let payload: unknown;
   try {
     payload = JSON.parse(validation.rawBody);
@@ -72,7 +72,7 @@ async function handleGitHubWebhook(
     return response(400, { error: "Invalid JSON payload" }, requestId);
   }
 
-  // Step 3: Extract delivery ID for idempotency
+  //Extract delivery ID for idempotency
   const deliveryId =
     event.headers["x-github-delivery"] ?? event.headers["X-GitHub-Delivery"];
 
@@ -81,7 +81,7 @@ async function handleGitHubWebhook(
     return response(400, { error: "Missing X-GitHub-Delivery header" }, requestId);
   }
 
-  // Step 4: Claim delivery (idempotency check + atomic lock)
+  //Claim delivery (idempotency check + atomic lock)
   const eventType = event.headers["x-github-event"] ?? event.headers["X-GitHub-Event"] ?? "unknown";
   const githubRepoId = String((payload as { repository?: { id?: number } })?.repository?.id ?? "unknown");
 
@@ -91,7 +91,7 @@ async function handleGitHubWebhook(
     return response(200, { message: "Already processed" }, requestId);
   }
 
-  // Step 5: Route to appropriate handler
+  //Route to appropriate handler
   try {
     const result = await routeWebhookEvent(event, payload, deliveryId);
 

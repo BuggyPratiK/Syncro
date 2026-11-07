@@ -1,7 +1,6 @@
 ﻿/**
  * Structured JSON logger for CloudWatch Logs.
  * Each log line is a valid JSON object — CloudWatch Logs Insights can query these fields.
- * IMPORTANT: Never log secrets, webhook payloads, or sensitive data.
  */
 
 type LogLevel = "debug" | "info" | "warn" | "error";

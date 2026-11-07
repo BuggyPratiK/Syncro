@@ -22,7 +22,7 @@ export interface GitHubRepository {
   id: number;
   node_id: string;
   name: string;
-  full_name: string; // e.g. "owner/repo-name"
+  full_name: string;
   private: boolean;
   html_url: string;
   default_branch: string;
@@ -42,11 +42,11 @@ export interface GitHubUser {
 }
 
 export interface GitHubCommit {
-  id: string; // SHA
+  id: string;
   tree_id: string;
   distinct: boolean;
   message: string;
-  timestamp: string; // ISO 8601
+  timestamp: string;
   url: string;
   author: GitHubCommitAuthor;
   committer: GitHubCommitAuthor;

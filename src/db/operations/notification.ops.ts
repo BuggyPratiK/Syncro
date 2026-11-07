@@ -7,9 +7,7 @@ import { ddb } from "../client";
 import { tableName, keys } from "../table";
 import { NotificationItem } from "../../types/dynamodb.types";
 
-/**
- * Creates a notification record with "pending" status before sending.
- */
+
 export async function createNotificationRecord(
   githubRepoId: string,
   deliveryId: string,
@@ -28,9 +26,6 @@ export async function createNotificationRecord(
   return timestamp; // Return timestamp as the sort key for subsequent updates
 }
 
-/**
- * Updates the notification record to "sent" status.
- */
 export async function markNotificationSent(
   githubRepoId: string,
   timestamp: string,
@@ -53,9 +48,6 @@ export async function markNotificationSent(
   );
 }
 
-/**
- * Updates the notification record to "failed" status.
- */
 export async function markNotificationFailed(
   githubRepoId: string,
   timestamp: string,

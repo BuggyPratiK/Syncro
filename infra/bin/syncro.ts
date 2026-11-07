@@ -5,7 +5,6 @@ import * as path from "path";
 import * as fs from "fs";
 import { SyncroStack } from "../lib/syncro-stack";
 
-// Load .env.local if present, else .env
 const envLocal = path.resolve(__dirname, "../../.env.local");
 const envDefault = path.resolve(__dirname, "../../.env");
 if (fs.existsSync(envLocal)) {

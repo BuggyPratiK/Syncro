@@ -17,7 +17,7 @@ const envSchema = z.object({
   GITHUB_APP_PRIVATE_KEY: z.string().min(1),
   GITHUB_WEBHOOK_SECRET: z.string().min(1),
 
-  // Discord (MVP)
+  // Discord -mvp
   DISCORD_WEBHOOK_URL: z.string().url(),
 
   // Default config
@@ -29,10 +29,10 @@ const envSchema = z.object({
   // Runtime environment
   NODE_ENV: z.enum(["development", "test", "production"]).default("production"),
 
-  // Telegram (Phase 2 — optional)
+  //For later..
   TELEGRAM_BOT_TOKEN: z.string().optional(),
 
-  // Slack (Phase 3 — optional)
+  //For later...
   SLACK_WEBHOOK_URL: z.string().url().optional(),
 });
 

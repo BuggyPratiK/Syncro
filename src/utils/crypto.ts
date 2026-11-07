@@ -7,8 +7,8 @@ import { createHmac, timingSafeEqual } from "crypto";
 /**
  * Verifies a GitHub webhook HMAC-SHA256 signature.
  *
- * @param secret    - The webhook secret configured in GitHub
- * @param rawBody   - The raw request body string (NOT parsed JSON)
+ * @param secret
+ * @param rawBody
  * @param signature - The X-Hub-Signature-256 header value (format: "sha256=<hex>")
  * @returns true if the signature is valid, false otherwise
  *
@@ -30,7 +30,6 @@ export function verifyGitHubSignature(
   const expected = Buffer.from(`sha256=${expectedHex}`, "utf8");
   const received = Buffer.from(signature, "utf8");
 
-  // Lengths must match before timingSafeEqual (it throws if lengths differ)
   if (expected.length !== received.length) {
     return false;
   }

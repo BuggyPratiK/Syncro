@@ -16,6 +16,8 @@ const config: Config = {
   collectCoverageFrom: ["src/**/*.ts", "!src/**/*.d.ts"],
   coverageDirectory: "coverage",
   coverageReporters: ["text", "lcov", "html"],
+  clearMocks: true,
+  restoreMocks: true,
 };
 
 export default config;

@@ -1,4 +1,4 @@
-﻿/**
+/**
  * DynamoDB DocumentClient singleton.
  *
  * CRITICAL: Initialized OUTSIDE the Lambda handler so it is reused
@@ -9,27 +9,49 @@ import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
 import { DynamoDBDocumentClient } from "@aws-sdk/lib-dynamodb";
 import { getEnv } from "../config/env";
 
-function createClient(): DynamoDBDocumentClient {
-  const env = getEnv();
+let _rawClient: DynamoDBClient | undefined;
+let _ddb: DynamoDBDocumentClient | undefined;
 
-  const rawClient = new DynamoDBClient({
-    region: env.AWS_REGION,
-    // Only set endpoint for local DynamoDB development
-    ...(env.DYNAMODB_ENDPOINT ? { endpoint: env.DYNAMODB_ENDPOINT } : {}),
-    // Retry configuration for transient failures
-    maxAttempts: 3,
-  });
+export function getDdbDocClient(): DynamoDBDocumentClient {
+  if (!_ddb) {
+    const env = getEnv();
+    _rawClient = new DynamoDBClient({
+      region: env.AWS_REGION,
+      // Only set endpoint for local DynamoDB development
+      ...(env.DYNAMODB_ENDPOINT ? { endpoint: env.DYNAMODB_ENDPOINT } : {}),
+      // Retry configuration for transient failures
+      maxAttempts: 3,
+    });
 
-  return DynamoDBDocumentClient.from(rawClient, {
-    marshallOptions: {
-      removeUndefinedValues: true, // Don't store undefined as null
-      convertEmptyValues: false,
-    },
-    unmarshallOptions: {
-      wrapNumbers: false,
-    },
-  });
+    _ddb = DynamoDBDocumentClient.from(_rawClient, {
+      marshallOptions: {
+        removeUndefinedValues: true,
+        convertEmptyValues: false,
+      },
+      unmarshallOptions: {
+        wrapNumbers: false,
+      },
+    });
+  }
+  return _ddb;
 }
 
-// Module-level singleton — reused across warm Lambda invocations
-export const ddb = createClient();
+export function destroyClient(): void {
+  if (_rawClient) {
+    _rawClient.destroy();
+    _rawClient = undefined;
+    _ddb = undefined;
+  }
+}
+
+/**
+ * Lazy DocumentClient proxy. Avoids opening network sockets on file import,
+ * initializing only on first actual operation.
+ */
+export const ddb = new Proxy({} as DynamoDBDocumentClient, {
+  get(_target, prop) {
+    const client = getDdbDocClient();
+    const val = Reflect.get(client, prop);
+    return typeof val === "function" ? val.bind(client) : val;
+  },
+});

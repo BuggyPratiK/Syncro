@@ -1,4 +1,4 @@
-﻿name: Deploy
+name: Deploy
 
 on:
   push:
@@ -25,12 +25,25 @@ jobs:
       - name: Build TypeScript
         run: npm run build
 
+      - name: Type Check
+        run: npm run type-check
+
+      - name: Run Tests
+        run: npm test
+
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: ap-southeast-2
+          aws-region: ${{ secrets.AWS_REGION || 'ap-southeast-2' }}
 
       - name: CDK Deploy
         run: npm run cdk:deploy
+        env:
+          GITHUB_APP_ID: ${{ secrets.GITHUB_APP_ID }}
+          GITHUB_APP_PRIVATE_KEY: ${{ secrets.GITHUB_APP_PRIVATE_KEY }}
+          GITHUB_WEBHOOK_SECRET: ${{ secrets.GITHUB_WEBHOOK_SECRET }}
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+          AWS_REGION: ${{ secrets.AWS_REGION || 'ap-southeast-2' }}
+          LOG_LEVEL: ${{ secrets.LOG_LEVEL || 'info' }}

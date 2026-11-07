@@ -38,6 +38,7 @@
         "@types/node": "^22.7.7",
         "@typescript-eslint/eslint-plugin": "^8.10.0",
         "@typescript-eslint/parser": "^8.10.0",
+        "aws-cdk": "^2.1146.1",
         "aws-cdk-lib": "^2.164.1",
         "constructs": "^10.4.2",
         "dotenv": "^18.0.8",
