@@ -84,9 +84,9 @@ flowchart TD
 | Entity | PK | SK | Key Attributes |
 |---|---|---|---|
 | **Repository Config** | `REPO#<github_repo_id>` | `CONFIG` | `discord_webhook_url`, `watched_branch`, `is_active`, `GSI1PK=TYPE#REPO` |
-| **Delivery Lock** | `DELIVERY#<delivery_id>` | `DELIVERY#<delivery_id>` | `status`, `received_at`, `ttl` (auto-expires in 30 days) |
-| **Commit Record** | `REPO#<github_repo_id>` | `COMMIT#<sha>` | `short_sha`, `author_name`, `message`, `additions`, `deletions`, `files` |
-| **Notification Log** | `REPO#<github_repo_id>` | `NOTIF#<ISO_timestamp>` | `channel`, `status`, `message_id`, `retry_count` |
+| **Delivery Lock** | `DELIVERY#<delivery_id>` | `DELIVERY#<delivery_id>` | `event_type` (`push` \| `pull_request`), `status`, `received_at`, `ttl` (auto-expires in 30 days) |
+| **Commit Record** | `REPO#<github_repo_id>` | `COMMIT#<sha>` | `short_sha`, `author_name`, `message`, `additions`, `deletions`, `files`, `branch` |
+| **Notification Log** | `REPO#<github_repo_id>` | `NOTIF#<ISO_timestamp>` | `channel`, `status` (`sent` \| `failed`), `delivery_id`, `retry_count` |
 
 ---
 
