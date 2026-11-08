@@ -21,34 +21,46 @@
 
 Syncro runs 100% serverless across permanent AWS Always-Free tier services:
 
-```text
-       GitHub Repository
-               |
-               v (webhooks via HTTPS: push to main | pull_request events)
-      Amazon API Gateway (REST API)
-               |
-               v (Proxy Integration)
-         AWS Lambda (Node.js 22 + TypeScript)
-               |
-               |-- 1. Verify HMAC-SHA256 Signature (crypto.timingSafeEqual)
-               |-- 2. Atomic Deduplication Lock via DynamoDB (attribute_not_exists)
-               |-- 3. Route Event:
-               |       • Direct push to main -> Enrich commit diffs & author metadata
-               |       • Pull Request        -> Filter lifecycle (opened, merged, reopened)
-               \-- 4. Format Rich Discord Embed & Dispatch to Repo-Configured Webhook
-                           |
-                           v
-              Discord Channel Notifications
-               +----------------------------------------------------+
-               | Direct Push to main:                               |
-               |  "🚀 MAIN updated - owner/repo                     |
-               |   3 commits by Dev | +45 / -12 | 4 files changed   |
-               |   Sync your local repo: git pull origin main"      |
-               +----------------------------------------------------+
-               | Pull Request Lifecycle:                            |
-               |  "🔍 PR #42 opened - feat: user auth (acme/repo)   |
-               |   Target: main <- feature/auth | Review Required"  |
-               +----------------------------------------------------+
+```mermaid
+flowchart TD
+    subgraph GitHub["GitHub"]
+        GH_REPO["📦 Monitored Repository"]
+        OCTOKIT["🐙 GitHub REST API"]
+    end
+
+    subgraph AWS["AWS Serverless Architecture (Always-Free Tier)"]
+        APIGW["🚪 Amazon API Gateway<br/>/v1/webhooks/github"]
+        LAMBDA["⚡ AWS Lambda<br/>Node.js 22 + TypeScript"]
+        DDB[("🗄️ Amazon DynamoDB<br/>Single-Table Design")]
+
+        subgraph Execution["Pipeline Flow"]
+            SEC["1. HMAC-SHA256 Security Check<br/>timingSafeEqual"]
+            DEDUP["2. Atomic Deduplication Lock<br/>attribute_not_exists(PK)"]
+            ROUTER{"3. Event Router"}
+            ENRICH["4a. Push Handler<br/>Fetch commit diff stats"]
+            PR_FILTER["4b. PR Handler<br/>Lifecycle filter: opened / closed / reopened"]
+            DISPATCH["5. Dispatch Engine<br/>Repo-specific webhook resolution"]
+        end
+    end
+
+    subgraph Destination["Notifications"]
+        DISCORD["💬 Discord Webhook Channel<br/>Push & PR Rich Embeds"]
+    end
+
+    GH_REPO -->|"Webhook (Push / PR)"| APIGW
+    APIGW --> LAMBDA
+    LAMBDA --> SEC
+    SEC --> DEDUP
+    DEDUP <-->|"Atomic Lock & TTL"| DDB
+    DEDUP --> ROUTER
+    ROUTER -->|"push (main)"| ENRICH
+    ROUTER -->|"pull_request"| PR_FILTER
+    ENRICH <-->|"Enrich commits"| OCTOKIT
+    ENRICH -.->|"Save commit history"| DDB
+    ENRICH --> DISPATCH
+    PR_FILTER --> DISPATCH
+    DISPATCH -.->|"Log notification"| DDB
+    DISPATCH -->|"Rate-limited delivery"| DISCORD
 ```
 
 ---
