@@ -88,6 +88,10 @@ describe("notification engine", () => {
     await dispatchPushNotification(mockSummary, mockRepoConfig);
 
     expect(notifOps.createNotificationRecord).toHaveBeenCalledWith("123", "deliv-123", "discord");
+    expect(mockSend).toHaveBeenCalledWith(
+      expect.objectContaining({ type: "push" }),
+      mockRepoConfig.discord_webhook_url,
+    );
     expect(notifOps.markNotificationSent).toHaveBeenCalledWith("123", "2026-10-15T00:00:00.000Z", "msg-123");
   });
 
@@ -101,6 +105,10 @@ describe("notification engine", () => {
     await dispatchPushNotification(mockSummary, mockRepoConfig);
 
     expect(notifOps.createNotificationRecord).toHaveBeenCalledWith("123", "deliv-123", "discord");
+    expect(mockSend).toHaveBeenCalledWith(
+      expect.objectContaining({ type: "push" }),
+      mockRepoConfig.discord_webhook_url,
+    );
     expect(notifOps.markNotificationFailed).toHaveBeenCalledWith(
       "123",
       "2026-10-15T00:00:00.000Z",
@@ -166,6 +174,7 @@ describe("notification engine", () => {
             title: "feat: pull request support",
           }),
         }),
+        mockRepoConfig.discord_webhook_url,
       );
       expect(notifOps.markNotificationSent).toHaveBeenCalledWith(
         "123",

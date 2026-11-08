@@ -18,8 +18,8 @@ const MAX_RETRIES = 1;
 export class DiscordProvider implements NotificationProvider {
   readonly channel = "discord" as const;
 
-  async send(payload: NotificationPayload): Promise<NotificationResult> {
-    const webhookUrl = getEnv().DISCORD_WEBHOOK_URL;
+  async send(payload: NotificationPayload, targetUrl?: string): Promise<NotificationResult> {
+    const webhookUrl = targetUrl || payload.webhookUrl || getEnv().DISCORD_WEBHOOK_URL;
     const embed =
       payload.type === "pull_request"
         ? buildPrEmbed(payload)

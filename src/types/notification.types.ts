@@ -38,6 +38,7 @@ export interface NotificationPayload {
   compareUrl: string;
   timestamp: string;
   pullRequest?: PullRequestNotificationDetails;
+  webhookUrl?: string;
 }
 
 export interface NotificationResult {
@@ -50,5 +51,5 @@ export interface NotificationResult {
 
 export interface NotificationProvider {
   readonly channel: NotificationChannel;
-  send(payload: NotificationPayload): Promise<NotificationResult>;
+  send(payload: NotificationPayload, targetUrl?: string): Promise<NotificationResult>;
 }

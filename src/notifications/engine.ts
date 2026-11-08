@@ -123,7 +123,12 @@ async function dispatchToProviders(
       provider.channel,
     );
 
-    const result = await provider.send(payload);
+    const targetUrl =
+      provider.channel === "discord"
+        ? repoConfig.discord_webhook_url
+        : undefined;
+
+    const result = await provider.send(payload, targetUrl);
 
     if (result.success) {
       await markNotificationSent(repoId, notifTimestamp, result.messageId);
@@ -151,6 +156,7 @@ export async function dispatchPushNotification(
   repoConfig: RepoConfigItem,
 ): Promise<void> {
   const payload = buildPayload(summary);
+  payload.webhookUrl = repoConfig.discord_webhook_url;
   await dispatchToProviders(summary.repoId, summary.deliveryId, payload, repoConfig);
 }
 
@@ -163,6 +169,7 @@ export async function dispatchPullRequestNotification(
   deliveryId: string,
 ): Promise<void> {
   const notifPayload = buildPrPayload(payload);
+  notifPayload.webhookUrl = repoConfig.discord_webhook_url;
   const repoId = String(payload.repository.id);
   await dispatchToProviders(repoId, deliveryId, notifPayload, repoConfig);
 }

@@ -70,7 +70,25 @@ describe("buildPrEmbed", () => {
     expect(embed.color).toBe(0x8250df);
 
     const syncField = embed.fields.find((f) => f.name.includes("Sync your local branch"));
+    expect(syncField?.name).toBe("🔄 Sync your local branch with main");
     expect(syncField?.value).toContain("git pull origin main");
+  });
+
+  it("uses custom base branch in sync instruction label for non-main branches", () => {
+    const devMergedPayload: NotificationPayload = {
+      ...basePayload,
+      pullRequest: {
+        ...basePayload.pullRequest!,
+        baseBranch: "develop",
+        action: "closed",
+        merged: true,
+      },
+    };
+
+    const embed = buildPrEmbed(devMergedPayload);
+    const syncField = embed.fields.find((f) => f.name.includes("Sync your local branch"));
+    expect(syncField?.name).toBe("🔄 Sync your local branch with develop");
+    expect(syncField?.value).toContain("git pull origin develop");
   });
 
   it("generates embed for PR closed without merging with red color", () => {

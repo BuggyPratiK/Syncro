@@ -89,7 +89,7 @@ export function buildPrEmbed(payload: NotificationPayload): DiscordEmbed {
   // Contributor action guidance
   if (isMerged) {
     fields.push({
-      name: "🔄 Sync your local branch with main",
+      name: `🔄 Sync your local branch with ${pr.baseBranch}`,
       value: `\`\`\`bash\ngit pull origin ${pr.baseBranch}\n\`\`\``,
       inline: false,
     });

@@ -147,4 +147,35 @@ describe("DiscordProvider", () => {
     expect(result.success).toBe(true);
     expect(capturedBody).toContain("PR #99 opened - acme/syncro");
   });
+
+  it("sends to repository webhook URL passed as targetUrl parameter", async () => {
+    let capturedUrl = "";
+    global.fetch = jest.fn().mockImplementation((url, _options) => {
+      capturedUrl = String(url);
+      return Promise.resolve({ ok: true, status: 200 } as any);
+    });
+
+    const customRepoWebhook = "https://discord.com/api/webhooks/custom-repo-channel";
+    const provider = new DiscordProvider();
+    const result = await provider.send(mockPayload, customRepoWebhook);
+
+    expect(result.success).toBe(true);
+    expect(capturedUrl).toBe(customRepoWebhook);
+  });
+
+  it("sends to payload.webhookUrl when targetUrl is not provided", async () => {
+    let capturedUrl = "";
+    global.fetch = jest.fn().mockImplementation((url, _options) => {
+      capturedUrl = String(url);
+      return Promise.resolve({ ok: true, status: 200 } as any);
+    });
+
+    const customRepoWebhook = "https://discord.com/api/webhooks/payload-channel";
+    const payloadWithUrl = { ...mockPayload, webhookUrl: customRepoWebhook };
+    const provider = new DiscordProvider();
+    const result = await provider.send(payloadWithUrl);
+
+    expect(result.success).toBe(true);
+    expect(capturedUrl).toBe(customRepoWebhook);
+  });
 });
