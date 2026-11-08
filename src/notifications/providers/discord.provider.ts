@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Discord notification provider.
  * Sends rich embed messages to a Discord channel via Incoming Webhook.
  *
@@ -10,6 +10,7 @@ import { NotificationProvider, NotificationPayload, NotificationResult } from ".
 import { getEnv } from "../../config/env";
 import { logger } from "../../utils/logger";
 import { buildPushEmbed } from "../templates/push.template";
+import { buildPrEmbed } from "../templates/pr.template";
 
 const DISCORD_RATE_LIMIT_STATUS = 429;
 const MAX_RETRIES = 1;
@@ -17,9 +18,12 @@ const MAX_RETRIES = 1;
 export class DiscordProvider implements NotificationProvider {
   readonly channel = "discord" as const;
 
-  async send(payload: NotificationPayload): Promise<NotificationResult> {
-    const webhookUrl = getEnv().DISCORD_WEBHOOK_URL;
-    const embed = buildPushEmbed(payload);
+  async send(payload: NotificationPayload, targetUrl?: string): Promise<NotificationResult> {
+    const webhookUrl = targetUrl || payload.webhookUrl || getEnv().DISCORD_WEBHOOK_URL;
+    const embed =
+      payload.type === "pull_request"
+        ? buildPrEmbed(payload)
+        : buildPushEmbed(payload);
 
     for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
       try {

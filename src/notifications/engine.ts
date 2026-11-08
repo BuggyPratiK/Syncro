@@ -1,10 +1,10 @@
-﻿/**
+/**
  * Notification Engine.
  * Dispatches notifications to configured providers for a given push event.
  * Provider selection is driven by repository config from DynamoDB.
  */
 
-import { PushEventSummary } from "../types/github.types";
+import { PushEventSummary, GitHubPullRequestPayload } from "../types/github.types";
 import { NotificationPayload, NotificationProvider } from "../types/notification.types";
 import { RepoConfigItem } from "../types/dynamodb.types";
 import { DiscordProvider } from "./providers/discord.provider";
@@ -46,6 +46,44 @@ function buildPayload(summary: PushEventSummary): NotificationPayload {
 }
 
 /**
+ * Builds the generic NotificationPayload from a GitHub PR payload.
+ */
+export function buildPrPayload(
+  payload: GitHubPullRequestPayload,
+): NotificationPayload {
+  const pr = payload.pull_request;
+  const isMerged = pr.merged === true;
+
+  return {
+    type: "pull_request",
+    repoFullName: payload.repository.full_name,
+    repoUrl: payload.repository.html_url,
+    branch: pr.base.ref,
+    pusherName: pr.user.login,
+    commits: [],
+    totalAdditions: pr.additions ?? 0,
+    totalDeletions: pr.deletions ?? 0,
+    totalFilesChanged: pr.changed_files ?? 0,
+    changedFiles: [],
+    compareUrl: pr.html_url,
+    timestamp: new Date().toISOString(),
+    pullRequest: {
+      action: payload.action,
+      number: pr.number,
+      title: pr.title,
+      body: pr.body,
+      url: pr.html_url,
+      authorName: pr.user.login,
+      authorAvatarUrl: pr.user.avatar_url,
+      baseBranch: pr.base.ref,
+      headBranch: pr.head.ref,
+      merged: isMerged,
+      draft: pr.draft,
+    },
+  };
+}
+
+/**
  * Determines which providers to use for a given repo config.
  * Currently only Discord is implemented (Phase 1).
  */
@@ -60,18 +98,19 @@ function getProviders(repoConfig: RepoConfigItem): NotificationProvider[] {
 }
 
 /**
- * Sends notifications for a push event to all configured channels.
+ * Helper to dispatch a NotificationPayload across all configured providers.
  */
-export async function dispatchPushNotification(
-  summary: PushEventSummary,
+async function dispatchToProviders(
+  repoId: string,
+  deliveryId: string,
+  payload: NotificationPayload,
   repoConfig: RepoConfigItem,
 ): Promise<void> {
-  const payload = buildPayload(summary);
   const providers = getProviders(repoConfig);
 
   if (providers.length === 0) {
     logger.warn("No notification providers configured for repo", {
-      repo: summary.repoFullName,
+      repo: payload.repoFullName,
     });
     return;
   }
@@ -79,27 +118,58 @@ export async function dispatchPushNotification(
   // Send to all configured channels (sequentially in MVP — parallel in Phase 4+)
   for (const provider of providers) {
     const notifTimestamp = await createNotificationRecord(
-      summary.repoId,
-      summary.deliveryId,
+      repoId,
+      deliveryId,
       provider.channel,
     );
 
-    const result = await provider.send(payload);
+    const targetUrl =
+      provider.channel === "discord"
+        ? repoConfig.discord_webhook_url
+        : undefined;
+
+    const result = await provider.send(payload, targetUrl);
 
     if (result.success) {
-      await markNotificationSent(summary.repoId, notifTimestamp, result.messageId);
+      await markNotificationSent(repoId, notifTimestamp, result.messageId);
       logger.info("Notification delivered", {
         channel: provider.channel,
-        repo: summary.repoFullName,
+        repo: payload.repoFullName,
         retried: result.retried,
       });
     } else {
-      await markNotificationFailed(summary.repoId, notifTimestamp, result.error ?? "Unknown error");
+      await markNotificationFailed(repoId, notifTimestamp, result.error ?? "Unknown error");
       logger.error("Notification delivery failed", {
         channel: provider.channel,
-        repo: summary.repoFullName,
+        repo: payload.repoFullName,
         error: result.error,
       });
     }
   }
+}
+
+/**
+ * Sends notifications for a push event to all configured channels.
+ */
+export async function dispatchPushNotification(
+  summary: PushEventSummary,
+  repoConfig: RepoConfigItem,
+): Promise<void> {
+  const payload = buildPayload(summary);
+  payload.webhookUrl = repoConfig.discord_webhook_url;
+  await dispatchToProviders(summary.repoId, summary.deliveryId, payload, repoConfig);
+}
+
+/**
+ * Sends notifications for a pull request event to all configured channels.
+ */
+export async function dispatchPullRequestNotification(
+  payload: GitHubPullRequestPayload,
+  repoConfig: RepoConfigItem,
+  deliveryId: string,
+): Promise<void> {
+  const notifPayload = buildPrPayload(payload);
+  notifPayload.webhookUrl = repoConfig.discord_webhook_url;
+  const repoId = String(payload.repository.id);
+  await dispatchToProviders(repoId, deliveryId, notifPayload, repoConfig);
 }

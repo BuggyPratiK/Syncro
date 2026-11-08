@@ -1,16 +1,16 @@
-﻿/**
+/**
  * Event Router.
  * Routes validated webhook events to the appropriate handler
  * based on the X-GitHub-Event header.
  */
 
 import { APIGatewayProxyEvent } from "aws-lambda";
-import { handlePushEvent } from "./handlers";
-import { GitHubPushPayload } from "../types/github.types";
+import { handlePushEvent, handlePullRequestEvent } from "./handlers";
+import { GitHubPushPayload, GitHubPullRequestPayload } from "../types/github.types";
 import { logger } from "../utils/logger";
 
-export type SupportedEvent = "push";
-const SUPPORTED_EVENTS: SupportedEvent[] = ["push"];
+export type SupportedEvent = "push" | "pull_request";
+const SUPPORTED_EVENTS: SupportedEvent[] = ["push", "pull_request"];
 
 export interface RouterResult {
   handled: boolean;
@@ -47,6 +47,13 @@ export async function routeWebhookEvent(
         parsedPayload as GitHubPushPayload,
         deliveryId,
         installationId ?? 0,
+      );
+      return { handled: true, eventType };
+
+    case "pull_request":
+      await handlePullRequestEvent(
+        parsedPayload as GitHubPullRequestPayload,
+        deliveryId,
       );
       return { handled: true, eventType };
 

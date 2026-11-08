@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Telegram notification provider — Phase 2 stub.
  * Implement TelegramProvider when Phase 2 begins.
  */
@@ -8,7 +8,7 @@ import { NotificationProvider, NotificationPayload, NotificationResult } from ".
 export class TelegramProvider implements NotificationProvider {
   readonly channel = "telegram" as const;
 
-  async send(_payload: NotificationPayload): Promise<NotificationResult> {
+  async send(_payload: NotificationPayload, _targetUrl?: string): Promise<NotificationResult> {
     throw new Error("TelegramProvider is not implemented yet (Phase 2)");
   }
 }

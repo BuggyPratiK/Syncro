@@ -4,6 +4,7 @@ import { APIGatewayProxyEvent } from "aws-lambda";
 
 jest.mock("../../src/webhooks/handlers", () => ({
   handlePushEvent: jest.fn().mockResolvedValue(undefined),
+  handlePullRequestEvent: jest.fn().mockResolvedValue(undefined),
 }));
 
 describe("routeWebhookEvent", () => {
@@ -54,5 +55,19 @@ describe("routeWebhookEvent", () => {
     expect(result.handled).toBe(true);
     expect(result.eventType).toBe("push");
     expect(handlers.handlePushEvent).toHaveBeenCalledWith(payload, "delivery-1", 9999);
+  });
+
+  it("dispatches pull_request events to handlePullRequestEvent and returns handled: true", async () => {
+    const event = createEvent({ "x-github-event": "pull_request" });
+    const payload = {
+      repository: { id: 12345 },
+      action: "opened",
+      pull_request: { number: 10 },
+    };
+
+    const result = await routeWebhookEvent(event, payload, "delivery-pr-1");
+    expect(result.handled).toBe(true);
+    expect(result.eventType).toBe("pull_request");
+    expect(handlers.handlePullRequestEvent).toHaveBeenCalledWith(payload, "delivery-pr-1");
   });
 });

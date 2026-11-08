@@ -1,4 +1,4 @@
-﻿/**
+/**
  * AWS Lambda Handler — Syncro GitHub Webhook Receiver
  *
  * This is the entry point for all Lambda invocations triggered by API Gateway.
@@ -27,7 +27,7 @@ function response(
   };
 }
 
-// ─── Lambda Handler ───────────────────────────────────────────────────────────
+//--------- Lambda Handler -----------
 
 export async function handler(
   event: APIGatewayProxyEvent,
@@ -39,12 +39,12 @@ export async function handler(
 
   logger.info("Request received", { method, path, requestId });
 
-  // ── Health check ──────────────────────────────────────────────────────────
+  //--------- Health check ------------
   if (method === "GET" && path === "/health") {
     return response(200, { status: "ok", service: "syncro" }, requestId);
   }
 
-  // ── Webhook endpoint ──────────────────────────────────────────────────────
+  //------- Webhook endpoint -----------
   if (method === "POST" && path === "/webhooks/github") {
     return handleGitHubWebhook(event, requestId);
   }
@@ -66,7 +66,7 @@ async function handleGitHubWebhook(
   //Parse payload
   let payload: unknown;
   try {
-    payload = JSON.parse(validation.rawBody);
+    payload = JSON.parse(validation.rawBody.replace(/^\uFEFF/, ""));
   } catch {
     logger.warn("Failed to parse webhook payload as JSON", { requestId });
     return response(400, { error: "Invalid JSON payload" }, requestId);

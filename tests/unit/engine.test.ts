@@ -10,8 +10,8 @@ jest.mock("../../src/notifications/providers/discord.provider", () => {
   };
 });
 
-import { dispatchPushNotification } from "../../src/notifications/engine";
-import { PushEventSummary } from "../../src/types/github.types";
+import { dispatchPushNotification, dispatchPullRequestNotification } from "../../src/notifications/engine";
+import { PushEventSummary, GitHubPullRequestPayload } from "../../src/types/github.types";
 import { RepoConfigItem } from "../../src/types/dynamodb.types";
 import * as notifOps from "../../src/db/operations/notification.ops";
 
@@ -88,6 +88,10 @@ describe("notification engine", () => {
     await dispatchPushNotification(mockSummary, mockRepoConfig);
 
     expect(notifOps.createNotificationRecord).toHaveBeenCalledWith("123", "deliv-123", "discord");
+    expect(mockSend).toHaveBeenCalledWith(
+      expect.objectContaining({ type: "push" }),
+      mockRepoConfig.discord_webhook_url,
+    );
     expect(notifOps.markNotificationSent).toHaveBeenCalledWith("123", "2026-10-15T00:00:00.000Z", "msg-123");
   });
 
@@ -101,10 +105,91 @@ describe("notification engine", () => {
     await dispatchPushNotification(mockSummary, mockRepoConfig);
 
     expect(notifOps.createNotificationRecord).toHaveBeenCalledWith("123", "deliv-123", "discord");
+    expect(mockSend).toHaveBeenCalledWith(
+      expect.objectContaining({ type: "push" }),
+      mockRepoConfig.discord_webhook_url,
+    );
     expect(notifOps.markNotificationFailed).toHaveBeenCalledWith(
       "123",
       "2026-10-15T00:00:00.000Z",
       "Discord rate limit exceeded",
     );
+  });
+
+  describe("dispatchPullRequestNotification", () => {
+    const mockPrPayload: GitHubPullRequestPayload = {
+      action: "opened",
+      number: 88,
+      pull_request: {
+        id: 888,
+        number: 88,
+        state: "open",
+        title: "feat: pull request support",
+        body: "Detailed description",
+        html_url: "https://github.com/acme/syncro/pull/88",
+        diff_url: "https://github.com/acme/syncro/pull/88.diff",
+        created_at: "2026-10-15T00:00:00Z",
+        updated_at: "2026-10-15T00:00:00Z",
+        closed_at: null,
+        merged_at: null,
+        merge_commit_sha: null,
+        merged: false,
+        user: { login: "pratik", id: 1 },
+        head: { label: "feat/pr", ref: "feat/pr", sha: "abc", repo: null },
+        base: { label: "main", ref: "main", sha: "def", repo: {} as any },
+        additions: 30,
+        deletions: 5,
+        changed_files: 2,
+        commits: 1,
+      },
+      repository: {
+        id: 123,
+        node_id: "r123",
+        name: "syncro",
+        full_name: "acme/syncro",
+        private: false,
+        html_url: "https://github.com/acme/syncro",
+        default_branch: "main",
+        owner: { login: "acme", id: 10 },
+      },
+      sender: { login: "pratik", id: 1 },
+    };
+
+    it("dispatches PR notification to configured providers", async () => {
+      mockSend.mockResolvedValueOnce({
+        success: true,
+        channel: "discord",
+        messageId: "pr-msg-123",
+      });
+
+      await dispatchPullRequestNotification(mockPrPayload, mockRepoConfig, "deliv-pr-123");
+
+      expect(notifOps.createNotificationRecord).toHaveBeenCalledWith("123", "deliv-pr-123", "discord");
+      expect(mockSend).toHaveBeenCalledWith(
+        expect.objectContaining({
+          type: "pull_request",
+          branch: "main",
+          pullRequest: expect.objectContaining({
+            number: 88,
+            title: "feat: pull request support",
+          }),
+        }),
+        mockRepoConfig.discord_webhook_url,
+      );
+      expect(notifOps.markNotificationSent).toHaveBeenCalledWith(
+        "123",
+        "2026-10-15T00:00:00.000Z",
+        "pr-msg-123",
+      );
+    });
+
+    it("skips dispatch when no providers are configured in repoConfig", async () => {
+      const emptyConfig = { ...mockRepoConfig, discord_webhook_url: "" };
+
+      await dispatchPullRequestNotification(mockPrPayload, emptyConfig, "deliv-pr-123");
+
+      expect(notifOps.createNotificationRecord).not.toHaveBeenCalled();
+      expect(mockSend).not.toHaveBeenCalled();
+    });
   });
 });

@@ -1,8 +1,22 @@
-﻿/**
+/**
  * Notification Provider Contract
  */
 
 export type NotificationChannel = "discord" | "telegram" | "slack" | "whatsapp";
+
+export interface PullRequestNotificationDetails {
+  action: string;
+  number: number;
+  title: string;
+  body?: string | null;
+  url: string;
+  authorName: string;
+  authorAvatarUrl?: string;
+  baseBranch: string;
+  headBranch: string;
+  merged?: boolean;
+  draft?: boolean;
+}
 
 export interface NotificationPayload {
   type: "push" | "pull_request" | "branch_behind" | "daily_summary";
@@ -23,6 +37,8 @@ export interface NotificationPayload {
   changedFiles: string[];
   compareUrl: string;
   timestamp: string;
+  pullRequest?: PullRequestNotificationDetails;
+  webhookUrl?: string;
 }
 
 export interface NotificationResult {
@@ -35,5 +51,5 @@ export interface NotificationResult {
 
 export interface NotificationProvider {
   readonly channel: NotificationChannel;
-  send(payload: NotificationPayload): Promise<NotificationResult>;
+  send(payload: NotificationPayload, targetUrl?: string): Promise<NotificationResult>;
 }
