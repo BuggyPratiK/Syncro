@@ -1,9 +1,9 @@
-﻿<p align="center">
+<p align="center">
   <img src="assets/syncro-banner.png" alt="Syncro Wordmark" width="600"/>
 </p>
 
 <p align="center">
-  <strong>A Serverless GitHub Automation Bot</strong> that monitors repository commits and broadcasts rich, real-time update notifications to contributor channels (Discord) — built on an <strong>Always-Free AWS Serverless Architecture</strong> ($0/month indefinitely).
+  <strong>A Serverless GitHub Automation Bot</strong> that monitors repository commits, pushes & pull requests and broadcasts rich, real-time update notifications to contributor channels (Discord) — built on an <strong>Always-Free AWS Serverless Architecture</strong> ($0/month indefinitely).
 </p>
 
 <p align="center">
@@ -11,7 +11,7 @@
   <a href="https://www.typescriptlang.org/"><img src="https://img.shields.io/badge/TypeScript-5.6-blue?logo=typescript" alt="TypeScript"/></a>
   <a href="https://aws.amazon.com/"><img src="https://img.shields.io/badge/AWS-Serverless-orange?logo=amazon-aws" alt="AWS Serverless"/></a>
   <a href="https://aws.amazon.com/dynamodb/"><img src="https://img.shields.io/badge/Amazon-DynamoDB-4053D6?logo=amazon-dynamodb" alt="DynamoDB"/></a>
-  <a href="https://jestjs.io/"><img src="https://img.shields.io/badge/Coverage-91%25-brightgreen?logo=jest" alt="Jest Coverage"/></a>
+  <a href="https://jestjs.io/"><img src="https://img.shields.io/badge/Coverage-94%25-brightgreen?logo=jest" alt="Jest Coverage"/></a>
   <a href="https://opensource.org/licenses/MIT"><img src="https://img.shields.io/badge/License-MIT-yellow.svg" alt="License: MIT"/></a>
 </p>
 
@@ -22,30 +22,33 @@
 Syncro runs 100% serverless across permanent AWS Always-Free tier services:
 
 ```text
-  GitHub Repository
-         |
-         v (git push webhook via HTTPS)
- Amazon API Gateway (REST API)
-         |
-         v (Proxy Integration)
-   AWS Lambda (Node.js 22 + TypeScript)
-         |
-         |-- 1. Verify HMAC-SHA256 Signature (timingSafeEqual)
-         |-- 2. Atomic Deduplication Lock via DynamoDB (attribute_not_exists)
-         |-- 3. Enrich Commits & Stats via GitHub REST API (Octokit)
-         \-- 4. Build Rich Embed & Dispatch
-                     |
-                     v
-             Discord Webhook
-                     |
-                     v
-          "MAIN updated - owner/repo
-           3 commits pushed by Dev | +45 / -12 | 4 files changed
-           Commits:
-             a81f23c feat: add webhook idempotency
-             c92bd11 fix: resolve DynamoDB condition
-           Sync your repo before starting work:
-             git pull origin main"
+       GitHub Repository
+               |
+               v (webhooks via HTTPS: push to main | pull_request events)
+      Amazon API Gateway (REST API)
+               |
+               v (Proxy Integration)
+         AWS Lambda (Node.js 22 + TypeScript)
+               |
+               |-- 1. Verify HMAC-SHA256 Signature (crypto.timingSafeEqual)
+               |-- 2. Atomic Deduplication Lock via DynamoDB (attribute_not_exists)
+               |-- 3. Route Event:
+               |       • Direct push to main -> Enrich commit diffs & author metadata
+               |       • Pull Request        -> Filter lifecycle (opened, merged, reopened)
+               \-- 4. Format Rich Discord Embed & Dispatch to Repo-Configured Webhook
+                           |
+                           v
+              Discord Channel Notifications
+               +----------------------------------------------------+
+               | Direct Push to main:                               |
+               |  "🚀 MAIN updated - owner/repo                     |
+               |   3 commits by Dev | +45 / -12 | 4 files changed   |
+               |   Sync your local repo: git pull origin main"      |
+               +----------------------------------------------------+
+               | Pull Request Lifecycle:                            |
+               |  "🔍 PR #42 opened - feat: user auth (acme/repo)   |
+               |   Target: main <- feature/auth | Review Required"  |
+               +----------------------------------------------------+
 ```
 
 ---
@@ -53,12 +56,14 @@ Syncro runs 100% serverless across permanent AWS Always-Free tier services:
 ## Key Architectural Features
 
 - **Permanent Always-Free Tier**: Powered by AWS Lambda (1M free requests/month forever) and Amazon DynamoDB (25 GB storage + 25 WCU/RCU forever). Runs at **$0/month indefinitely**.
+- **High-Signal Push & PR Lifecycle Tracking**: Real-time rich embeds for commits and Pull Request events (`opened`, `reopened`, `closed/merged`) with dynamic base-branch contributor sync commands (`git pull origin <branch>`), diff statistics, and direct review links. Noisy events (synchronize, labels) are filtered to prevent channel spam.
+- **Per-Repository Webhook Routing**: Supports multi-tenant delivery where each monitored repository dispatches to its own dedicated Discord webhook URL configured in DynamoDB.
 - **Atomic Idempotency & Deduplication**: Prevents duplicate notifications during GitHub webhook retries using conditional DynamoDB `PutItem` (`attribute_not_exists(PK)`). Zero duplicate notifications even under concurrent delivery bursts.
 - **Single-Table Design**: All entities (Repository Configs, Delivery Deduplication Records, Commit History, Notification Logs) live in a single DynamoDB table with composite partition and sort keys (`PK` / `SK`).
 - **Cryptographic Security**: Every incoming payload is validated using HMAC-SHA256 signatures with constant-time equality comparisons (`crypto.timingSafeEqual`) to prevent timing attack vulnerabilities.
 - **Resilient Delivery**: Automatic retry with exponential backoff on HTTP `429 Too Many Requests` respecting Discord's `Retry-After` rate-limit headers.
 - **Infrastructure as Code (IaC)**: Fully defined and reproducible using **AWS CDK (TypeScript)**. One-command deployments and teardowns.
-- **Comprehensive Test Suite**: 15 test suites and 67 unit tests covering **~91% of the codebase**.
+- **Comprehensive Test Suite & E2E Layer**: 18 test suites and 92 tests covering **~94% of the codebase**, including an end-to-end integration test layer validating the pipeline from API Gateway -> Lambda -> DynamoDB -> Discord mock.
 
 ---
 
@@ -79,7 +84,7 @@ Syncro runs 100% serverless across permanent AWS Always-Free tier services:
 
 - Node.js 22+ & npm
 - AWS CLI configured with active credentials
-- A GitHub App created with **Repository: Contents (Read)** & **Metadata (Read)** permissions
+- A GitHub App created with **Repository: Contents (Read)**, **Pull requests (Read)** & **Metadata (Read)** permissions (subscribed to **Push** and **Pull request** webhook events)
 - A Discord Webhook URL for your target channel
 
 ### 1. Installation
