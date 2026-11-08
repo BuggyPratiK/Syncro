@@ -1,18 +1,17 @@
-/**
+/*
  * GitHub Webhook Event Types
- * Based on GitHub Webhooks API documentation
  */
 
 export interface GitHubPushPayload {
-  ref: string; // e.g. "refs/heads/main"
-  before: string; // SHA before push
-  after: string; // SHA after push
+  ref: string;
+  before: string;
+  after: string;
   repository: GitHubRepository;
   pusher: GitHubPusher;
   sender: GitHubUser;
   commits: GitHubCommit[];
   head_commit: GitHubCommit | null;
-  compare: string; // URL to GitHub compare view
+  compare: string;
   forced: boolean;
   created: boolean;
   deleted: boolean;
@@ -61,7 +60,6 @@ export interface GitHubCommitAuthor {
   username?: string;
 }
 
-/** Enriched commit data fetched from GitHub API */
 export interface EnrichedCommit extends GitHubCommit {
   shortSha?: string;
   additions: number;
@@ -70,7 +68,6 @@ export interface EnrichedCommit extends GitHubCommit {
   allChangedFiles: string[];
 }
 
-/** Summary of a push event after enrichment */
 export interface PushEventSummary {
   repoId: string;
   repoFullName: string;
@@ -83,4 +80,90 @@ export interface PushEventSummary {
   totalFilesChanged: number;
   compareUrl: string;
   deliveryId: string;
+}
+
+export interface GitHubPullRequestBranch {
+  label: string;
+  ref: string;
+  sha: string;
+  repo: GitHubRepository | null;
+}
+
+export interface GitHubPullRequest {
+  id: number;
+  number: number;
+  state: "open" | "closed";
+  title: string;
+  body: string | null;
+  html_url: string;
+  diff_url: string;
+  created_at: string;
+  updated_at: string;
+  closed_at: string | null;
+  merged_at: string | null;
+  merge_commit_sha: string | null;
+  merged: boolean;
+  draft?: boolean;
+  user: GitHubUser;
+  head: GitHubPullRequestBranch;
+  base: GitHubPullRequestBranch;
+  additions: number;
+  deletions: number;
+  changed_files: number;
+  commits: number;
+}
+
+export interface GitHubPullRequestPayload {
+  action: "opened" | "closed" | "reopened" | "synchronize" | "edited" | string;
+  number: number;
+  pull_request: GitHubPullRequest;
+  repository: GitHubRepository;
+  sender: GitHubUser;
+  installation?: {
+    id: number;
+    node_id: string;
+  };
+}
+
+export interface GitHubPullRequestBranch {
+  label: string;
+  ref: string;
+  sha: string;
+  repo: GitHubRepository | null;
+}
+
+export interface GitHubPullRequest {
+  id: number;
+  number: number;
+  state: "open" | "closed";
+  title: string;
+  body: string | null;
+  html_url: string;
+  diff_url: string;
+  created_at: string;
+  updated_at: string;
+  closed_at: string | null;
+  merged_at: string | null;
+  merge_commit_sha: string | null;
+  merged: boolean;
+  draft?: boolean;
+  user: GitHubUser;
+  head: GitHubPullRequestBranch;
+  base: GitHubPullRequestBranch;
+  additions: number;
+  deletions: number;
+  changed_files: number;
+  commits: number;
+}
+
+export interface GitHubPullRequestPayload {
+  action: "opened" | "closed" | "reopened" | "synchronize" | "edited" | string;
+  number: number;
+  pull_request: GitHubPullRequest;
+  repository: GitHubRepository;
+  sender: GitHubUser;
+  installation?: {
+    id: number;
+    node_id: string;
+  };
 }
