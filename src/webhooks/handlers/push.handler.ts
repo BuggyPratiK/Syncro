@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Push event handler.
  * Orchestrates the full pipeline for a GitHub push event:
  */
@@ -8,7 +8,11 @@ import { findActiveRepo } from "../../services/repository.service";
 import { enrichPushEvent } from "../../services/enrichment.service";
 import { dispatchPushNotification } from "../../notifications/engine";
 import { saveCommit } from "../../db/operations/commit.ops";
-import { markDeliveryProcessed, markDeliveryFailed } from "../../db/operations/delivery.ops";
+import {
+  markDeliveryProcessed,
+  markDeliveryFailed,
+  markDeliveryIgnored,
+} from "../../db/operations/delivery.ops";
 import { branchFromRef } from "../../utils/format";
 import { logger } from "../../utils/logger";
 
@@ -26,7 +30,7 @@ export async function handlePushEvent(
     logger.info("Push event ignored — repo not registered or inactive", {
       repo: payload.repository.full_name,
     });
-    await markDeliveryProcessed(deliveryId);
+    await markDeliveryIgnored(deliveryId, "Repo not registered or inactive");
     return;
   }
 
@@ -37,7 +41,7 @@ export async function handlePushEvent(
       watchedBranch: repoConfig.watched_branch,
       repo: payload.repository.full_name,
     });
-    await markDeliveryProcessed(deliveryId);
+    await markDeliveryIgnored(deliveryId, `Branch ${branch} not watched`);
     return;
   }
 
@@ -46,7 +50,7 @@ export async function handlePushEvent(
     logger.debug("Push event ignored — branch deleted or no commits", {
       repo: payload.repository.full_name,
     });
-    await markDeliveryProcessed(deliveryId);
+    await markDeliveryIgnored(deliveryId, "Branch deleted or no commits");
     return;
   }
 

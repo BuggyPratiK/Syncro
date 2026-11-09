@@ -7,7 +7,11 @@
 import { GitHubPullRequestPayload } from "../../types/github.types";
 import { findActiveRepo } from "../../services/repository.service";
 import { dispatchPullRequestNotification } from "../../notifications/engine";
-import { markDeliveryProcessed, markDeliveryFailed } from "../../db/operations/delivery.ops";
+import {
+  markDeliveryProcessed,
+  markDeliveryFailed,
+  markDeliveryIgnored,
+} from "../../db/operations/delivery.ops";
 import { logger } from "../../utils/logger";
 
 const RELEVANT_PR_ACTIONS = new Set(["opened", "closed", "reopened"]);
@@ -26,7 +30,7 @@ export async function handlePullRequestEvent(
     logger.info("PR event ignored — repo not registered or inactive", {
       repo: payload.repository.full_name,
     });
-    await markDeliveryProcessed(deliveryId);
+    await markDeliveryIgnored(deliveryId, "Repo not registered or inactive");
     return;
   }
 
@@ -37,7 +41,7 @@ export async function handlePullRequestEvent(
       watchedBranch: repoConfig.watched_branch,
       repo: payload.repository.full_name,
     });
-    await markDeliveryProcessed(deliveryId);
+    await markDeliveryIgnored(deliveryId, `Target branch ${baseBranch} not watched`);
     return;
   }
 
@@ -47,7 +51,7 @@ export async function handlePullRequestEvent(
       action,
       repo: payload.repository.full_name,
     });
-    await markDeliveryProcessed(deliveryId);
+    await markDeliveryIgnored(deliveryId, `PR action ${action} not relevant`);
     return;
   }
 

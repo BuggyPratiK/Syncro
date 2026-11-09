@@ -97,7 +97,10 @@ describe("handlePullRequestEvent", () => {
 
     await handlePullRequestEvent(basePrPayload, "deliv-pr-1");
 
-    expect(deliveryOps.markDeliveryProcessed).toHaveBeenCalledWith("deliv-pr-1");
+    expect(deliveryOps.markDeliveryIgnored).toHaveBeenCalledWith(
+      "deliv-pr-1",
+      expect.stringContaining("Repo not registered"),
+    );
     expect(notificationEngine.dispatchPullRequestNotification).not.toHaveBeenCalled();
   });
 
@@ -117,7 +120,10 @@ describe("handlePullRequestEvent", () => {
 
     await handlePullRequestEvent(devBranchPayload, "deliv-pr-2");
 
-    expect(deliveryOps.markDeliveryProcessed).toHaveBeenCalledWith("deliv-pr-2");
+    expect(deliveryOps.markDeliveryIgnored).toHaveBeenCalledWith(
+      "deliv-pr-2",
+      expect.stringContaining("Target branch develop not watched"),
+    );
     expect(notificationEngine.dispatchPullRequestNotification).not.toHaveBeenCalled();
   });
 
@@ -131,7 +137,10 @@ describe("handlePullRequestEvent", () => {
 
     await handlePullRequestEvent(labeledPayload, "deliv-pr-3");
 
-    expect(deliveryOps.markDeliveryProcessed).toHaveBeenCalledWith("deliv-pr-3");
+    expect(deliveryOps.markDeliveryIgnored).toHaveBeenCalledWith(
+      "deliv-pr-3",
+      expect.stringContaining("PR action labeled not relevant"),
+    );
     expect(notificationEngine.dispatchPullRequestNotification).not.toHaveBeenCalled();
   });
 

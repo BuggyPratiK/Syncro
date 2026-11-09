@@ -159,6 +159,10 @@ describe("Lambda handler", () => {
       const result = await handler(event, mockContext);
       expect(result.statusCode).toBe(200);
       expect(JSON.parse(result.body).message).toBe("Event received but not handled");
+      expect(deliveryOps.markDeliveryIgnored).toHaveBeenCalledWith(
+        "deliv-ping-1",
+        expect.stringContaining("Unsupported event: ping"),
+      );
     });
 
     it("returns 200 with 'OK' when push event is processed successfully", async () => {
@@ -208,6 +212,10 @@ describe("Lambda handler", () => {
       const result = await handler(event, mockContext);
       expect(result.statusCode).toBe(500);
       expect(JSON.parse(result.body).error).toBe("Internal server error");
+      expect(deliveryOps.markDeliveryFailed).toHaveBeenCalledWith(
+        "deliv-push-err",
+        "Unexpected failure",
+      );
     });
   });
 });

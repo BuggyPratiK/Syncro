@@ -140,7 +140,32 @@ describe("Webhook Pipeline E2E Integration Tests", () => {
         if (!PK || !SK) return {};
 
         const sKey = storeKey(PK, SK);
-        const item = dbStore.get(sKey) || { PK, SK };
+        const existing = dbStore.get(sKey);
+        const condition = command.input.ConditionExpression;
+
+        // Simulate conditional checks for claimDelivery and notifications
+        if (condition && condition.includes("attribute_not_exists(PK)")) {
+          if (existing) {
+            if (existing.status === "processed" || existing.status === "ignored") {
+              throw new ConditionalCheckFailedException({
+                $metadata: {},
+                message: "Already processed or ignored",
+              });
+            }
+            if (
+              existing.status === "processing" &&
+              existing.lease_expires_at &&
+              existing.lease_expires_at >= Date.now()
+            ) {
+              throw new ConditionalCheckFailedException({
+                $metadata: {},
+                message: "Active lease held",
+              });
+            }
+          }
+        }
+
+        const item = existing ? { ...existing } : { PK, SK };
         const exprValues = command.input.ExpressionAttributeValues || {};
 
         if (exprValues[":status"]) {
@@ -154,6 +179,19 @@ describe("Webhook Pipeline E2E Integration Tests", () => {
         }
         if (exprValues[":messageId"]) {
           item.message_id = exprValues[":messageId"];
+        }
+        if (exprValues[":repoId"]) {
+          item.github_repo_id = exprValues[":repoId"];
+        }
+        if (exprValues[":eventType"]) {
+          item.event_type = exprValues[":eventType"];
+        }
+        if (exprValues[":leaseExpires"]) {
+          item.lease_expires_at = exprValues[":leaseExpires"];
+        }
+        if (exprValues[":nowIso"]) {
+          item.last_attempt_at = exprValues[":nowIso"];
+          if (!item.received_at) item.received_at = exprValues[":nowIso"];
         }
 
         dbStore.set(sKey, item);

@@ -23,6 +23,7 @@ export class SyncroStack extends cdk.Stack {
       sortKey: { name: "SK", type: dynamodb.AttributeType.STRING },
       billingMode: dynamodb.BillingMode.PAY_PER_REQUEST, // Scales to zero - Always Free
       timeToLiveAttribute: "ttl",
+      encryption: dynamodb.TableEncryption.AWS_MANAGED, // Explicit server-side encryption at rest
       removalPolicy: cdk.RemovalPolicy.RETAIN, // Never delete table on stack destroy
     });
 

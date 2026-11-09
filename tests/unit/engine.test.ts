@@ -87,7 +87,12 @@ describe("notification engine", () => {
 
     await dispatchPushNotification(mockSummary, mockRepoConfig);
 
-    expect(notifOps.createNotificationRecord).toHaveBeenCalledWith("123", "deliv-123", "discord");
+    expect(notifOps.createNotificationRecord).toHaveBeenCalledWith(
+      "123",
+      "deliv-123",
+      "discord",
+      expect.anything(),
+    );
     expect(mockSend).toHaveBeenCalledWith(
       expect.objectContaining({ type: "push" }),
       mockRepoConfig.discord_webhook_url,
@@ -104,7 +109,12 @@ describe("notification engine", () => {
 
     await dispatchPushNotification(mockSummary, mockRepoConfig);
 
-    expect(notifOps.createNotificationRecord).toHaveBeenCalledWith("123", "deliv-123", "discord");
+    expect(notifOps.createNotificationRecord).toHaveBeenCalledWith(
+      "123",
+      "deliv-123",
+      "discord",
+      expect.anything(),
+    );
     expect(mockSend).toHaveBeenCalledWith(
       expect.objectContaining({ type: "push" }),
       mockRepoConfig.discord_webhook_url,
@@ -113,6 +123,19 @@ describe("notification engine", () => {
       "123",
       "2026-10-15T00:00:00.000Z",
       "Discord rate limit exceeded",
+      undefined,
+    );
+  });
+
+  it("safely handles unexpected exceptions from provider without throwing", async () => {
+    mockSend.mockRejectedValueOnce(new Error("Fatal network crash"));
+
+    await expect(dispatchPushNotification(mockSummary, mockRepoConfig)).resolves.not.toThrow();
+
+    expect(notifOps.markNotificationFailed).toHaveBeenCalledWith(
+      "123",
+      "2026-10-15T00:00:00.000Z",
+      "Fatal network crash",
     );
   });
 
@@ -164,7 +187,12 @@ describe("notification engine", () => {
 
       await dispatchPullRequestNotification(mockPrPayload, mockRepoConfig, "deliv-pr-123");
 
-      expect(notifOps.createNotificationRecord).toHaveBeenCalledWith("123", "deliv-pr-123", "discord");
+      expect(notifOps.createNotificationRecord).toHaveBeenCalledWith(
+        "123",
+        "deliv-pr-123",
+        "discord",
+        expect.anything(),
+      );
       expect(mockSend).toHaveBeenCalledWith(
         expect.objectContaining({
           type: "pull_request",

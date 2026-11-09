@@ -1,4 +1,4 @@
-﻿/**
+/**
  * DynamoDB Item Shape Definitions
  * These define the structure of items stored in the syncro table.
  */
@@ -18,15 +18,21 @@ export interface RepoConfigItem {
   updated_at: string; // ISO 8601 UTC
 }
 
+export type DeliveryStatus = "processing" | "processed" | "failed" | "ignored";
+
 /** Delivery dedup item — PK=DELIVERY#<id>, SK=DELIVERY#<id> */
 export interface DeliveryItem {
   PK: string; // DELIVERY#<X-GitHub-Delivery>
   SK: string; // DELIVERY#<X-GitHub-Delivery>
   github_repo_id: string;
-  event_type: string; // "push" | "pull_request"
-  status: "processing" | "processed" | "failed";
+  event_type: string; // "push" | "pull_request" | string
+  status: DeliveryStatus;
   received_at: string; // ISO 8601 UTC
   processed_at?: string; // ISO 8601 UTC
+  error_message?: string;
+  lease_expires_at?: number; // Unix epoch ms — allows safe recovery of interrupted executions
+  attempt_count?: number; // Total number of processing attempts
+  last_attempt_at?: string; // ISO 8601 UTC
   ttl: number; // Unix epoch — auto-deleted after 30 days
 }
 
@@ -49,16 +55,19 @@ export interface CommitItem {
   committed_at: string; // ISO 8601 UTC
 }
 
-/** Notification log item — PK=REPO#<id>, SK=NOTIF#<ISO_timestamp> */
+/** Notification log item — PK=REPO#<id>, SK=NOTIF#<delivery_id>#<channel>[#<dest_id>] */
 export interface NotificationItem {
   PK: string; // REPO#<github_repo_id>
-  SK: string; // NOTIF#<ISO_timestamp>
+  SK: string; // NOTIF#<delivery_id>#<channel>[#<dest_id>]
   delivery_id: string;
   channel: string; // "discord" | "telegram" | "slack"
+  destination_id?: string; // safe non-secret target identifier (e.g. webhook ID or sha256 slice)
   status: "pending" | "sent" | "failed";
   retry_count: number;
   message_id?: string; // returned by Discord/Telegram if available
-  sent_at?: string; // ISO 8601 UTC
-  failed_at?: string; // ISO 8601 UTC
+  created_at: string; // ISO 8601 UTC — initial record creation
+  sent_at?: string; // ISO 8601 UTC — when delivery succeeded
+  failed_at?: string; // ISO 8601 UTC — when delivery failed
   error_message?: string;
+  updated_at?: string; // ISO 8601 UTC — last update or retry
 }
