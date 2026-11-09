@@ -73,32 +73,41 @@ describe("handlePushEvent", () => {
     jest.clearAllMocks();
   });
 
-  it("skips and marks processed if repo is not registered or active", async () => {
+  it("skips and marks ignored if repo is not registered or active", async () => {
     jest.spyOn(repoService, "findActiveRepo").mockResolvedValueOnce(null);
 
     await handlePushEvent(basePayload, "deliv-1", 100);
 
-    expect(deliveryOps.markDeliveryProcessed).toHaveBeenCalledWith("deliv-1");
+    expect(deliveryOps.markDeliveryIgnored).toHaveBeenCalledWith(
+      "deliv-1",
+      expect.stringContaining("Repo not registered"),
+    );
     expect(enrichmentService.enrichPushEvent).not.toHaveBeenCalled();
   });
 
-  it("skips and marks processed if branch does not match watched branch", async () => {
+  it("skips and marks ignored if branch does not match watched branch", async () => {
     jest.spyOn(repoService, "findActiveRepo").mockResolvedValueOnce(mockRepoConfig);
     const featurePayload = { ...basePayload, ref: "refs/heads/feature/experiment" };
 
     await handlePushEvent(featurePayload, "deliv-2", 100);
 
-    expect(deliveryOps.markDeliveryProcessed).toHaveBeenCalledWith("deliv-2");
+    expect(deliveryOps.markDeliveryIgnored).toHaveBeenCalledWith(
+      "deliv-2",
+      expect.stringContaining("Branch feature/experiment not watched"),
+    );
     expect(enrichmentService.enrichPushEvent).not.toHaveBeenCalled();
   });
 
-  it("skips and marks processed if branch was deleted or has 0 commits", async () => {
+  it("skips and marks ignored if branch was deleted or has 0 commits", async () => {
     jest.spyOn(repoService, "findActiveRepo").mockResolvedValueOnce(mockRepoConfig);
     const emptyPayload = { ...basePayload, commits: [] };
 
     await handlePushEvent(emptyPayload, "deliv-3", 100);
 
-    expect(deliveryOps.markDeliveryProcessed).toHaveBeenCalledWith("deliv-3");
+    expect(deliveryOps.markDeliveryIgnored).toHaveBeenCalledWith(
+      "deliv-3",
+      expect.stringContaining("Branch deleted or no commits"),
+    );
     expect(enrichmentService.enrichPushEvent).not.toHaveBeenCalled();
   });
 

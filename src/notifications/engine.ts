@@ -13,6 +13,7 @@ import {
   markNotificationSent,
   markNotificationFailed,
 } from "../db/operations/notification.ops";
+import { extractDestinationId } from "../db/table";
 import { logger } from "../utils/logger";
 
 // Instantiate providers once per Lambda cold start (reused across warm invocations)
@@ -117,32 +118,52 @@ async function dispatchToProviders(
 
   // Send to all configured channels (sequentially in MVP — parallel in Phase 4+)
   for (const provider of providers) {
-    const notifTimestamp = await createNotificationRecord(
-      repoId,
-      deliveryId,
-      provider.channel,
-    );
-
     const targetUrl =
       provider.channel === "discord"
         ? repoConfig.discord_webhook_url
         : undefined;
 
-    const result = await provider.send(payload, targetUrl);
+    const destinationId = extractDestinationId(targetUrl);
 
-    if (result.success) {
-      await markNotificationSent(repoId, notifTimestamp, result.messageId);
-      logger.info("Notification delivered", {
+    const notificationId = await createNotificationRecord(
+      repoId,
+      deliveryId,
+      provider.channel,
+      destinationId,
+    );
+
+    try {
+      const result = await provider.send(payload, targetUrl);
+
+      if (result.success) {
+        await markNotificationSent(repoId, notificationId, result.messageId);
+        logger.info("Notification delivered", {
+          channel: provider.channel,
+          repo: payload.repoFullName,
+          retried: result.retried,
+          retryCount: result.retryCount,
+        });
+      } else {
+        await markNotificationFailed(
+          repoId,
+          notificationId,
+          result.error ?? "Unknown error",
+          result.retryCount,
+        );
+        logger.error("Notification delivery failed", {
+          channel: provider.channel,
+          repo: payload.repoFullName,
+          error: result.error,
+          retryCount: result.retryCount,
+        });
+      }
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      await markNotificationFailed(repoId, notificationId, errorMessage);
+      logger.error("Unexpected notification provider exception", {
         channel: provider.channel,
         repo: payload.repoFullName,
-        retried: result.retried,
-      });
-    } else {
-      await markNotificationFailed(repoId, notifTimestamp, result.error ?? "Unknown error");
-      logger.error("Notification delivery failed", {
-        channel: provider.channel,
-        repo: payload.repoFullName,
-        error: result.error,
+        error: errorMessage,
       });
     }
   }
@@ -156,7 +177,6 @@ export async function dispatchPushNotification(
   repoConfig: RepoConfigItem,
 ): Promise<void> {
   const payload = buildPayload(summary);
-  payload.webhookUrl = repoConfig.discord_webhook_url;
   await dispatchToProviders(summary.repoId, summary.deliveryId, payload, repoConfig);
 }
 
@@ -169,7 +189,6 @@ export async function dispatchPullRequestNotification(
   deliveryId: string,
 ): Promise<void> {
   const notifPayload = buildPrPayload(payload);
-  notifPayload.webhookUrl = repoConfig.discord_webhook_url;
   const repoId = String(payload.repository.id);
   await dispatchToProviders(repoId, deliveryId, notifPayload, repoConfig);
 }

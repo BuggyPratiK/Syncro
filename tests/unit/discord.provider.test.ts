@@ -110,6 +110,150 @@ describe("DiscordProvider", () => {
     expect(result.error).toContain("Discord API error 500");
   });
 
+  it("does not retry permanent client errors (400, 401, 404) and returns immediately", async () => {
+    global.fetch = jest.fn().mockResolvedValue({
+      ok: false,
+      status: 400,
+      text: jest.fn().mockResolvedValue("Bad Request: Invalid Embed"),
+    } as any);
+
+    const provider = new DiscordProvider();
+    const result = await provider.send(mockPayload);
+
+    expect(result.success).toBe(false);
+    expect(result.channel).toBe("discord");
+    expect(result.statusCode).toBe(400);
+    expect(result.retried).toBe(false);
+    expect(result.error).toContain("Discord API error 400: Bad Request: Invalid Embed");
+    // Verified: Called ONLY ONCE — no retries for permanent errors!
+    expect(global.fetch).toHaveBeenCalledTimes(1);
+  });
+
+  it("handles transient 5xx errors by retrying with backoff", async () => {
+    const setTimeoutSpy = jest
+      .spyOn(global, "setTimeout")
+      .mockImplementation((fn: any) => {
+        fn();
+        return 0 as any;
+      });
+
+    const error500 = {
+      ok: false,
+      status: 500,
+      text: jest.fn().mockResolvedValue("Internal Server Error"),
+    };
+    const success200 = {
+      ok: true,
+      status: 200,
+    };
+
+    global.fetch = jest
+      .fn()
+      .mockResolvedValueOnce(error500 as any)
+      .mockResolvedValueOnce(success200 as any);
+
+    const provider = new DiscordProvider({ initialDelayMs: 10 });
+    const result = await provider.send(mockPayload);
+
+    expect(result.success).toBe(true);
+    expect(result.retried).toBe(true);
+    expect(result.retryCount).toBe(1);
+    expect(global.fetch).toHaveBeenCalledTimes(2);
+
+    setTimeoutSpy.mockRestore();
+  });
+
+  it("handles transient network errors by retrying with backoff", async () => {
+    const setTimeoutSpy = jest
+      .spyOn(global, "setTimeout")
+      .mockImplementation((fn: any) => {
+        fn();
+        return 0 as any;
+      });
+
+    global.fetch = jest
+      .fn()
+      .mockRejectedValueOnce(new Error("fetch failed (ECONNRESET)"))
+      .mockResolvedValueOnce({ ok: true, status: 204 } as any);
+
+    const provider = new DiscordProvider({ initialDelayMs: 10 });
+    const result = await provider.send(mockPayload);
+
+    expect(result.success).toBe(true);
+    expect(result.retried).toBe(true);
+    expect(result.retryCount).toBe(1);
+    expect(global.fetch).toHaveBeenCalledTimes(2);
+
+    setTimeoutSpy.mockRestore();
+  });
+
+  it("aborts rate limit retry when retry-after exceeds maxRetryDelayMs", async () => {
+    const rateLimitResponse = {
+      ok: false,
+      status: 429,
+      headers: {
+        get: (h: string) => (h.toLowerCase() === "retry-after" ? "60" : null), // 60 seconds!
+      },
+      text: jest.fn().mockResolvedValue("You are being rate limited."),
+    };
+
+    global.fetch = jest.fn().mockResolvedValue(rateLimitResponse as any);
+
+    const provider = new DiscordProvider({ maxRetryDelayMs: 2000 });
+    const result = await provider.send(mockPayload);
+
+    expect(result.success).toBe(false);
+    expect(result.statusCode).toBe(429);
+    expect(result.error).toContain("exceeds max delay");
+    // Did NOT sleep or retry
+    expect(global.fetch).toHaveBeenCalledTimes(1);
+  });
+
+  it("aborts rate limit retry when remaining execution budget is insufficient", async () => {
+    const rateLimitResponse = {
+      ok: false,
+      status: 429,
+      headers: {
+        get: (h: string) => (h.toLowerCase() === "retry-after" ? "2.5" : null), // 2500ms
+      },
+      text: jest.fn().mockResolvedValue("Rate limited"),
+    };
+
+    global.fetch = jest.fn().mockResolvedValue(rateLimitResponse as any);
+
+    // Only 3000ms left in Lambda; 2500ms + 2000ms safety buffer > 3000ms
+    const provider = new DiscordProvider({
+      getRemainingTimeMs: () => 3000,
+    });
+    const result = await provider.send(mockPayload);
+
+    expect(result.success).toBe(false);
+    expect(result.statusCode).toBe(429);
+    expect(result.error).toContain("exceeds execution budget");
+    expect(global.fetch).toHaveBeenCalledTimes(1);
+  });
+
+  it("redacts secret tokens from Discord webhook URLs in error messages", async () => {
+    global.fetch = jest.fn().mockRejectedValue(
+      new Error("Failed to post to https://discord.com/api/webhooks/1234567890/super_secret_token_val"),
+    );
+
+    const provider = new DiscordProvider({ maxRetries: 0 });
+    const result = await provider.send(mockPayload);
+
+    expect(result.success).toBe(false);
+    expect(result.error).toContain("https://discord.com/api/webhooks/1234567890/[REDACTED]");
+    expect(result.error).not.toContain("super_secret_token_val");
+  });
+
+  it("returns failure when missing Discord webhook URL", async () => {
+    const provider = new DiscordProvider();
+    const result = await provider.send(mockPayload, "");
+
+    expect(result.success).toBe(false);
+    expect(result.error).toBe("Missing Discord webhook URL");
+  });
+
   it("formats and delivers pull_request payloads using buildPrEmbed", async () => {
     let capturedBody = "";
     global.fetch = jest.fn().mockImplementation((_url, options) => {
@@ -158,22 +302,6 @@ describe("DiscordProvider", () => {
     const customRepoWebhook = "https://discord.com/api/webhooks/custom-repo-channel";
     const provider = new DiscordProvider();
     const result = await provider.send(mockPayload, customRepoWebhook);
-
-    expect(result.success).toBe(true);
-    expect(capturedUrl).toBe(customRepoWebhook);
-  });
-
-  it("sends to payload.webhookUrl when targetUrl is not provided", async () => {
-    let capturedUrl = "";
-    global.fetch = jest.fn().mockImplementation((url, _options) => {
-      capturedUrl = String(url);
-      return Promise.resolve({ ok: true, status: 200 } as any);
-    });
-
-    const customRepoWebhook = "https://discord.com/api/webhooks/payload-channel";
-    const payloadWithUrl = { ...mockPayload, webhookUrl: customRepoWebhook };
-    const provider = new DiscordProvider();
-    const result = await provider.send(payloadWithUrl);
 
     expect(result.success).toBe(true);
     expect(capturedUrl).toBe(customRepoWebhook);

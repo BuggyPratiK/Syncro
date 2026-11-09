@@ -10,7 +10,11 @@
 import { APIGatewayProxyEvent, APIGatewayProxyResult, Context } from "aws-lambda";
 import { validateWebhookSignature } from "./webhooks/validator";
 import { routeWebhookEvent } from "./webhooks/router";
-import { claimDelivery } from "./db/operations/delivery.ops";
+import {
+  claimDelivery,
+  markDeliveryIgnored,
+  markDeliveryFailed,
+} from "./db/operations/delivery.ops";
 import { logger } from "./utils/logger";
 
 // ─── Response Helpers ─────────────────────────────────────────────────────────
@@ -85,9 +89,9 @@ async function handleGitHubWebhook(
   const eventType = event.headers["x-github-event"] ?? event.headers["X-GitHub-Event"] ?? "unknown";
   const githubRepoId = String((payload as { repository?: { id?: number } })?.repository?.id ?? "unknown");
 
-  const isNew = await claimDelivery(deliveryId, githubRepoId, eventType);
-  if (!isNew) {
-    logger.info("Duplicate delivery — already processed", { deliveryId, requestId });
+  const isClaimed = await claimDelivery(deliveryId, githubRepoId, eventType);
+  if (!isClaimed) {
+    logger.info("Duplicate delivery — already processed or in progress", { deliveryId, requestId });
     return response(200, { message: "Already processed" }, requestId);
   }
 
@@ -97,6 +101,7 @@ async function handleGitHubWebhook(
 
     if (!result.handled) {
       logger.debug("Event not handled", { eventType: result.eventType, requestId });
+      await markDeliveryIgnored(deliveryId, `Unsupported event: ${result.eventType}`);
       return response(200, { message: "Event received but not handled" }, requestId);
     }
 
@@ -104,6 +109,7 @@ async function handleGitHubWebhook(
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : "Internal server error";
     logger.error("Webhook processing error", { error: errorMessage, requestId });
+    await markDeliveryFailed(deliveryId, errorMessage);
     return response(500, { error: "Internal server error" }, requestId);
   }
 }

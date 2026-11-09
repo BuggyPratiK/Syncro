@@ -1,4 +1,10 @@
-import { keys, gsiKeys, tableName } from "../../src/db/table";
+import {
+  keys,
+  gsiKeys,
+  tableName,
+  buildNotificationId,
+  extractDestinationId,
+} from "../../src/db/table";
 
 describe("DynamoDB Table Key Builders", () => {
   const originalEnv = process.env;
@@ -48,11 +54,32 @@ describe("DynamoDB Table Key Builders", () => {
   });
 
   it("builds notification log keys correctly", () => {
-    const ts = "2026-10-15T00:00:00.000Z";
-    expect(keys.notification("987654", ts)).toEqual({
+    expect(keys.notification("987654", "deliv-1#discord#webhook-id")).toEqual({
       PK: "REPO#987654",
-      SK: `NOTIF#${ts}`,
+      SK: "NOTIF#deliv-1#discord#webhook-id",
     });
+  });
+
+  it("buildNotificationId builds deterministic key with and without destinationId", () => {
+    expect(buildNotificationId("deliv-1", "discord")).toBe("deliv-1#discord");
+    expect(buildNotificationId("deliv-1", "Discord", "123456789")).toBe("deliv-1#discord#123456789");
+  });
+
+  it("extractDestinationId safely extracts Discord webhook ID without secret token", () => {
+    const url = "https://discord.com/api/webhooks/9876543210/secret_token_value_xyz";
+    expect(extractDestinationId(url)).toBe("9876543210");
+  });
+
+  it("extractDestinationId hashes non-discord URLs to avoid secret leakage", () => {
+    const url = "https://custom.hook/receiver?token=super_secret";
+    const destId = extractDestinationId(url);
+    expect(destId).toBeDefined();
+    expect(destId).toHaveLength(10);
+    expect(destId).not.toContain("super_secret");
+  });
+
+  it("extractDestinationId returns undefined when no URL provided", () => {
+    expect(extractDestinationId(undefined)).toBeUndefined();
   });
 
   it("builds GSI keys correctly", () => {

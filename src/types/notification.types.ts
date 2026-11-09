@@ -38,7 +38,6 @@ export interface NotificationPayload {
   compareUrl: string;
   timestamp: string;
   pullRequest?: PullRequestNotificationDetails;
-  webhookUrl?: string;
 }
 
 export interface NotificationResult {
@@ -47,6 +46,8 @@ export interface NotificationResult {
   messageId?: string;
   error?: string;
   retried?: boolean;
+  retryCount?: number;
+  statusCode?: number;
 }
 
 export interface NotificationProvider {
