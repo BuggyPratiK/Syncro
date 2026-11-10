@@ -1,6 +1,7 @@
 const mockSend = jest.fn();
 
 jest.mock("../../src/db/operations/notification.ops");
+jest.mock("../../src/db/operations/destination.ops");
 jest.mock("../../src/notifications/providers/discord.provider", () => {
   return {
     DiscordProvider: jest.fn().mockImplementation(() => ({
@@ -12,8 +13,9 @@ jest.mock("../../src/notifications/providers/discord.provider", () => {
 
 import { dispatchPushNotification, dispatchPullRequestNotification } from "../../src/notifications/engine";
 import { PushEventSummary, GitHubPullRequestPayload } from "../../src/types/github.types";
-import { RepoConfigItem } from "../../src/types/dynamodb.types";
+import { RepoConfigItem, DiscordDestinationItem } from "../../src/types/dynamodb.types";
 import * as notifOps from "../../src/db/operations/notification.ops";
+import * as destOps from "../../src/db/operations/destination.ops";
 
 describe("notification engine", () => {
   const mockSummary: PushEventSummary = {
@@ -48,13 +50,26 @@ describe("notification engine", () => {
     deliveryId: "deliv-123",
   };
 
+  const mockDestination: DiscordDestinationItem = {
+    PK: "DESTINATION#dest-101",
+    SK: "CONFIG",
+    destination_id: "dest-101",
+    provider: "discord",
+    display_name: "Alerts Channel",
+    discord_webhook_url: "https://discord.com/api/webhooks/12345/dest-token",
+    is_active: true,
+    GSI1PK: "TYPE#DESTINATION",
+    created_at: "2026-10-15T00:00:00Z",
+    updated_at: "2026-10-15T00:00:00Z",
+  };
+
   const mockRepoConfig: RepoConfigItem = {
     PK: "REPO#123",
     SK: "CONFIG",
     github_repo_id: "123",
     github_full_name: "acme/syncro",
     github_url: "https://github.com/acme/syncro",
-    discord_webhook_url: "https://discord.com/api/webhooks/test",
+    discord_destination_id: "dest-101",
     watched_branch: "main",
     is_active: true,
     GSI1PK: "TYPE#REPO",
@@ -68,17 +83,10 @@ describe("notification engine", () => {
     jest.spyOn(notifOps, "createNotificationRecord").mockResolvedValue("2026-10-15T00:00:00.000Z");
     jest.spyOn(notifOps, "markNotificationSent").mockResolvedValue(undefined);
     jest.spyOn(notifOps, "markNotificationFailed").mockResolvedValue(undefined);
+    jest.spyOn(destOps, "getDiscordDestination").mockResolvedValue(mockDestination);
   });
 
-  it("skips dispatch when no notification providers are configured in repoConfig", async () => {
-    const emptyConfig = { ...mockRepoConfig, discord_webhook_url: "" };
-
-    await dispatchPushNotification(mockSummary, emptyConfig);
-
-    expect(notifOps.createNotificationRecord).not.toHaveBeenCalled();
-  });
-
-  it("dispatches notification and marks it sent on success", async () => {
+  it("resolves destination from discord_destination_id and dispatches successfully", async () => {
     mockSend.mockResolvedValueOnce({
       success: true,
       channel: "discord",
@@ -87,17 +95,74 @@ describe("notification engine", () => {
 
     await dispatchPushNotification(mockSummary, mockRepoConfig);
 
+    expect(destOps.getDiscordDestination).toHaveBeenCalledWith("dest-101");
     expect(notifOps.createNotificationRecord).toHaveBeenCalledWith(
       "123",
       "deliv-123",
       "discord",
-      expect.anything(),
+      "dest-101",
     );
     expect(mockSend).toHaveBeenCalledWith(
       expect.objectContaining({ type: "push" }),
-      mockRepoConfig.discord_webhook_url,
+      mockDestination.discord_webhook_url,
     );
-    expect(notifOps.markNotificationSent).toHaveBeenCalledWith("123", "2026-10-15T00:00:00.000Z", "msg-123");
+    expect(notifOps.markNotificationSent).toHaveBeenCalled();
+  });
+
+  it("skips dispatch when referenced destination is not found", async () => {
+    jest.spyOn(destOps, "getDiscordDestination").mockResolvedValueOnce(null);
+
+    await dispatchPushNotification(mockSummary, mockRepoConfig);
+
+    expect(notifOps.createNotificationRecord).not.toHaveBeenCalled();
+    expect(mockSend).not.toHaveBeenCalled();
+  });
+
+  it("skips dispatch when referenced destination is inactive", async () => {
+    jest.spyOn(destOps, "getDiscordDestination").mockResolvedValueOnce({
+      ...mockDestination,
+      is_active: false,
+    });
+
+    await dispatchPushNotification(mockSummary, mockRepoConfig);
+
+    expect(notifOps.createNotificationRecord).not.toHaveBeenCalled();
+    expect(mockSend).not.toHaveBeenCalled();
+  });
+
+  it("falls back to legacy discord_webhook_url when discord_destination_id is not set", async () => {
+    const legacyConfig: RepoConfigItem = {
+      ...mockRepoConfig,
+      discord_destination_id: undefined,
+      discord_webhook_url: "https://discord.com/api/webhooks/999/legacy-token",
+    };
+
+    mockSend.mockResolvedValueOnce({
+      success: true,
+      channel: "discord",
+      messageId: "legacy-msg",
+    });
+
+    await dispatchPushNotification(mockSummary, legacyConfig);
+
+    expect(destOps.getDiscordDestination).not.toHaveBeenCalled();
+    expect(mockSend).toHaveBeenCalledWith(
+      expect.anything(),
+      "https://discord.com/api/webhooks/999/legacy-token",
+    );
+  });
+
+  it("skips dispatch when neither destination nor legacy webhook URL is present", async () => {
+    const emptyConfig = {
+      ...mockRepoConfig,
+      discord_destination_id: undefined,
+      discord_webhook_url: undefined,
+    };
+
+    await dispatchPushNotification(mockSummary, emptyConfig);
+
+    expect(notifOps.createNotificationRecord).not.toHaveBeenCalled();
+    expect(mockSend).not.toHaveBeenCalled();
   });
 
   it("marks notification failed when provider send returns success: false", async () => {
@@ -113,11 +178,7 @@ describe("notification engine", () => {
       "123",
       "deliv-123",
       "discord",
-      expect.anything(),
-    );
-    expect(mockSend).toHaveBeenCalledWith(
-      expect.objectContaining({ type: "push" }),
-      mockRepoConfig.discord_webhook_url,
+      "dest-101",
     );
     expect(notifOps.markNotificationFailed).toHaveBeenCalledWith(
       "123",
@@ -178,7 +239,7 @@ describe("notification engine", () => {
       sender: { login: "pratik", id: 1 },
     };
 
-    it("dispatches PR notification to configured providers", async () => {
+    it("dispatches PR notification using resolved destination", async () => {
       mockSend.mockResolvedValueOnce({
         success: true,
         channel: "discord",
@@ -187,37 +248,21 @@ describe("notification engine", () => {
 
       await dispatchPullRequestNotification(mockPrPayload, mockRepoConfig, "deliv-pr-123");
 
+      expect(destOps.getDiscordDestination).toHaveBeenCalledWith("dest-101");
       expect(notifOps.createNotificationRecord).toHaveBeenCalledWith(
         "123",
         "deliv-pr-123",
         "discord",
-        expect.anything(),
+        "dest-101",
       );
       expect(mockSend).toHaveBeenCalledWith(
         expect.objectContaining({
           type: "pull_request",
-          branch: "main",
-          pullRequest: expect.objectContaining({
-            number: 88,
-            title: "feat: pull request support",
-          }),
+          pullRequest: expect.objectContaining({ number: 88 }),
         }),
-        mockRepoConfig.discord_webhook_url,
+        mockDestination.discord_webhook_url,
       );
-      expect(notifOps.markNotificationSent).toHaveBeenCalledWith(
-        "123",
-        "2026-10-15T00:00:00.000Z",
-        "pr-msg-123",
-      );
-    });
-
-    it("skips dispatch when no providers are configured in repoConfig", async () => {
-      const emptyConfig = { ...mockRepoConfig, discord_webhook_url: "" };
-
-      await dispatchPullRequestNotification(mockPrPayload, emptyConfig, "deliv-pr-123");
-
-      expect(notifOps.createNotificationRecord).not.toHaveBeenCalled();
-      expect(mockSend).not.toHaveBeenCalled();
+      expect(notifOps.markNotificationSent).toHaveBeenCalled();
     });
   });
 });

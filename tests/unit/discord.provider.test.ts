@@ -35,7 +35,7 @@ describe("DiscordProvider", () => {
       GITHUB_APP_ID: "123",
       GITHUB_APP_PRIVATE_KEY: "dummy-key",
       GITHUB_WEBHOOK_SECRET: "dummy-secret",
-      DISCORD_WEBHOOK_URL: "https://discord.com/api/webhooks/mock",
+      DISCORD_WEBHOOK_URL: "https://discord.com/api/webhooks/123456789012345678/mock-token",
     };
   });
 
@@ -294,16 +294,28 @@ describe("DiscordProvider", () => {
 
   it("sends to repository webhook URL passed as targetUrl parameter", async () => {
     let capturedUrl = "";
-    global.fetch = jest.fn().mockImplementation((url, _options) => {
+    let capturedOptions: any;
+    global.fetch = jest.fn().mockImplementation((url, options) => {
       capturedUrl = String(url);
+      capturedOptions = options;
       return Promise.resolve({ ok: true, status: 200 } as any);
     });
 
-    const customRepoWebhook = "https://discord.com/api/webhooks/custom-repo-channel";
+    const customRepoWebhook = "https://discord.com/api/webhooks/987654321098765432/custom-repo-channel";
     const provider = new DiscordProvider();
     const result = await provider.send(mockPayload, customRepoWebhook);
 
     expect(result.success).toBe(true);
     expect(capturedUrl).toBe(customRepoWebhook);
+    expect(capturedOptions.redirect).toBe("error");
+  });
+
+  it("rejects malicious or invalid webhook URLs with SSRF protection", async () => {
+    const provider = new DiscordProvider();
+    const badUrl = "http://internal-metadata.aws/secret";
+    const result = await provider.send(mockPayload, badUrl);
+
+    expect(result.success).toBe(false);
+    expect(result.error).toContain("Invalid Discord webhook URL");
   });
 });

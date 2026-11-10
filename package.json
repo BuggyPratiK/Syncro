@@ -21,6 +21,8 @@
         "local:start": "sam local start-api --env-vars .env.local.json --port 3000",
         "local:dynamo": "docker run -p 8000:8000 amazon/dynamodb-local",
         "seed": "ts-node scripts/seed-repo.ts",
+        "migrate:destinations": "ts-node scripts/migrate-destinations.ts",
+        "migrate:destinations:dry-run": "ts-node scripts/migrate-destinations.ts --dry-run",
         "format": "prettier --write \"src/**/*.ts\" \"infra/**/*.ts\"",
         "setup:secrets": "ts-node scripts/setup-aws-secrets.ts"
     },

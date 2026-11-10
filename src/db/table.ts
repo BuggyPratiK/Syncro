@@ -19,7 +19,13 @@ export const keys = {
   /** Repository config item */
   repoConfig: (githubRepoId: string | number) => ({
     PK: `REPO#${githubRepoId}`,
-    SK: "CONFIG",
+    SK: "CONFIG" as const,
+  }),
+
+  /** Discord destination item */
+  destination: (destinationId: string) => ({
+    PK: `DESTINATION#${destinationId}`,
+    SK: "CONFIG" as const,
   }),
 
   /** Delivery dedup item */
@@ -75,5 +81,8 @@ export function extractDestinationId(targetUrl?: string): string | undefined {
 
 export const gsiKeys = {
   /** GSI1PK for listing all repositories */
-  allRepos: () => "TYPE#REPO",
+  allRepos: () => "TYPE#REPO" as const,
+
+  /** GSI1PK for listing all destinations */
+  allDestinations: () => "TYPE#DESTINATION" as const,
 };

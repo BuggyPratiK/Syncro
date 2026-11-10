@@ -85,14 +85,30 @@ describe("Webhook Pipeline E2E Integration Tests", () => {
     dbStore.clear();
     discordCalls = [];
 
-    // Seed active watched repository in in-memory DynamoDB
+    // Seed active Discord destination in in-memory DynamoDB
+    const destinationConfig = {
+      PK: "DESTINATION#dest-e2e-001",
+      SK: "CONFIG",
+      destination_id: "dest-e2e-001",
+      provider: "discord",
+      display_name: "E2E Channel",
+      discord_webhook_url: "https://discord.com/api/webhooks/987654321098765432/e2e-channel-token",
+      is_active: true,
+      GSI1PK: "TYPE#DESTINATION",
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    };
+    dbStore.set(storeKey(destinationConfig.PK, destinationConfig.SK), { ...destinationConfig });
+
+    // Seed active watched repository in in-memory DynamoDB referencing destination
     const repoConfig = {
       PK: "REPO#987654321",
       SK: "CONFIG",
       github_repo_id: "987654321",
       github_full_name: "acme/syncro",
       github_url: "https://github.com/acme/syncro",
-      discord_webhook_url: "https://discord.com/api/webhooks/e2e-channel",
+      discord_destination_id: "dest-e2e-001",
+      discord_webhook_url: "https://discord.com/api/webhooks/987654321098765432/e2e-channel-token",
       watched_branch: "main",
       is_active: true,
       GSI1PK: "TYPE#REPO",
@@ -265,7 +281,7 @@ describe("Webhook Pipeline E2E Integration Tests", () => {
 
       // 5. Discord Webhook: Received rich embed with pull command at configured repo URL
       expect(discordCalls.length).toBe(1);
-      expect(discordCalls[0].url).toBe("https://discord.com/api/webhooks/e2e-channel");
+      expect(discordCalls[0].url).toBe("https://discord.com/api/webhooks/987654321098765432/e2e-channel-token");
       const discordEmbed = discordCalls[0].payload.embeds[0];
       expect(discordEmbed.title).toContain("MAIN updated - BuggyPratiK/project-x");
       expect(discordEmbed.fields.some((f: any) => f.value.includes("git pull origin main"))).toBe(true);
@@ -329,7 +345,7 @@ describe("Webhook Pipeline E2E Integration Tests", () => {
 
       // Discord received formatted PR embed
       expect(discordCalls.length).toBe(1);
-      expect(discordCalls[0].url).toBe("https://discord.com/api/webhooks/e2e-channel");
+      expect(discordCalls[0].url).toBe("https://discord.com/api/webhooks/987654321098765432/e2e-channel-token");
       const embed = discordCalls[0].payload.embeds[0];
       expect(embed.title).toContain("PR #42 opened - acme/syncro");
       expect(embed.description).toContain("feat: add user authentication");
@@ -355,7 +371,7 @@ describe("Webhook Pipeline E2E Integration Tests", () => {
 
       expect(response.statusCode).toBe(200);
       expect(discordCalls.length).toBe(1);
-      expect(discordCalls[0].url).toBe("https://discord.com/api/webhooks/e2e-channel");
+      expect(discordCalls[0].url).toBe("https://discord.com/api/webhooks/987654321098765432/e2e-channel-token");
       const embed = discordCalls[0].payload.embeds[0];
       expect(embed.title).toContain("PR #42 merged into main - acme/syncro");
       expect(embed.color).toBe(0x8250df);

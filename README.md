@@ -75,7 +75,7 @@ flowchart TD
 - **Cryptographic Security**: Every incoming payload is validated using HMAC-SHA256 signatures with constant-time equality comparisons (`crypto.timingSafeEqual`) to prevent timing attack vulnerabilities.
 - **Resilient Delivery**: Automatic retry with exponential backoff on HTTP `429 Too Many Requests` respecting Discord's `Retry-After` rate-limit headers.
 - **Infrastructure as Code (IaC)**: Fully defined and reproducible using **AWS CDK (TypeScript)**. One-command deployments and teardowns.
-- **Comprehensive Test Suite & E2E Layer**: 18 test suites and 92 tests covering **~94% of the codebase**, including an end-to-end integration test layer validating the pipeline from API Gateway -> Lambda -> DynamoDB -> Discord mock.
+- **Comprehensive Test Suite & E2E Layer**: 23 test suites and 175 tests covering **~93% of the codebase**, including an end-to-end integration test layer validating the pipeline from API Gateway -> Lambda -> DynamoDB -> Discord mock.
 
 ---
 
@@ -83,10 +83,35 @@ flowchart TD
 
 | Entity | PK | SK | Key Attributes |
 |---|---|---|---|
-| **Repository Config** | `REPO#<github_repo_id>` | `CONFIG` | `discord_webhook_url`, `watched_branch`, `is_active`, `GSI1PK=TYPE#REPO` |
-| **Delivery Lock** | `DELIVERY#<delivery_id>` | `DELIVERY#<delivery_id>` | `event_type` (`push` \| `pull_request`), `status`, `received_at`, `ttl` (auto-expires in 30 days) |
+| **Discord Destination** | `DESTINATION#<destination_id>` | `CONFIG` | `destination_id`, `provider` (`discord`), `display_name`, `discord_webhook_url` *(backend only)*, `is_active`, `GSI1PK=TYPE#DESTINATION` |
+| **Repository Config** | `REPO#<github_repo_id>` | `CONFIG` | `github_full_name`, `github_url`, `discord_destination_id` *(foreign key)*, `watched_branch`, `is_active`, `GSI1PK=TYPE#REPO` |
+| **Delivery Lock** | `DELIVERY#<delivery_id>` | `DELIVERY#<delivery_id>` | `event_type` (`push` \| `pull_request`), `status` (`processing` \| `processed` \| `failed` \| `ignored`), `lease_expires_at`, `attempt_count`, `ttl` (30 days) |
 | **Commit Record** | `REPO#<github_repo_id>` | `COMMIT#<sha>` | `short_sha`, `author_name`, `message`, `additions`, `deletions`, `files`, `branch` |
-| **Notification Log** | `REPO#<github_repo_id>` | `NOTIF#<ISO_timestamp>` | `channel`, `status` (`sent` \| `failed`), `delivery_id`, `retry_count` |
+| **Notification Log** | `REPO#<github_repo_id>` | `NOTIF#<delivery_id>#<channel>[#<dest_id>]` | `channel`, `destination_id`, `status` (`sent` \| `failed`), `retry_count`, `error_message` |
+
+---
+
+## Destination Management & Migration
+
+Syncro decouples Discord incoming webhooks into reusable destination entities, enabling multiple repositories to share a single Discord channel without secret duplication.
+
+### Migration from Legacy Configurations
+
+To migrate existing repository items containing direct `discord_webhook_url` attributes into normalized destination entities:
+
+```bash
+# 1. Preview changes safely without modifying DynamoDB
+npm run migrate:destinations:dry-run
+
+# 2. Apply migration idempotently
+npm run migrate:destinations
+```
+
+The migration script:
+- Reuses existing destinations when multiple repositories share the same webhook URL.
+- Retains legacy attributes for seamless zero-downtime backward compatibility.
+- Never prints raw webhook secrets or tokens (strictly masked with `[REDACTED]`).
+- Is fully idempotent and safe to resume if interrupted.
 
 ---
 
