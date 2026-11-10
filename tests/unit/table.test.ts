@@ -82,7 +82,15 @@ describe("DynamoDB Table Key Builders", () => {
     expect(extractDestinationId(undefined)).toBeUndefined();
   });
 
+  it("builds destination keys correctly", () => {
+    expect(keys.destination("dest-uuid-5678")).toEqual({
+      PK: "DESTINATION#dest-uuid-5678",
+      SK: "CONFIG",
+    });
+  });
+
   it("builds GSI keys correctly", () => {
     expect(gsiKeys.allRepos()).toBe("TYPE#REPO");
+    expect(gsiKeys.allDestinations()).toBe("TYPE#DESTINATION");
   });
 });

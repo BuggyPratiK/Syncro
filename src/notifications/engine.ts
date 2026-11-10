@@ -13,6 +13,7 @@ import {
   markNotificationSent,
   markNotificationFailed,
 } from "../db/operations/notification.ops";
+import { getDiscordDestination } from "../db/operations/destination.ops";
 import { extractDestinationId } from "../db/table";
 import { logger } from "../utils/logger";
 
@@ -84,22 +85,61 @@ export function buildPrPayload(
   };
 }
 
-/**
- * Determines which providers to use for a given repo config.
- * Currently only Discord is implemented (Phase 1).
- */
-function getProviders(repoConfig: RepoConfigItem): NotificationProvider[] {
-  const providers: NotificationProvider[] = [];
-  if (repoConfig.discord_webhook_url) {
-    providers.push(discordProvider);
-  }
-  // Phase 2: if (repoConfig.telegram_chat_id) providers.push(telegramProvider);
-  // Phase 3: if (repoConfig.slack_webhook_url) providers.push(slackProvider);
-  return providers;
+interface ResolvedTarget {
+  provider: NotificationProvider;
+  targetUrl: string;
+  destinationId?: string;
 }
 
 /**
- * Helper to dispatch a NotificationPayload across all configured providers.
+ * Resolves notification targets for a given repository.
+ * Resolves normalized destination references (discord_destination_id) first,
+ * and falls back to legacy direct webhook URLs for backward compatibility.
+ */
+async function resolveNotificationTargets(
+  repoConfig: RepoConfigItem,
+): Promise<ResolvedTarget[]> {
+  const targets: ResolvedTarget[] = [];
+
+  // 1. Check normalized Discord destination reference
+  if (repoConfig.discord_destination_id) {
+    const destination = await getDiscordDestination(repoConfig.discord_destination_id);
+    if (!destination) {
+      logger.warn("Referenced Discord destination not found", {
+        repo: repoConfig.github_full_name,
+        destinationId: repoConfig.discord_destination_id,
+      });
+    } else if (!destination.is_active) {
+      logger.warn("Referenced Discord destination is inactive — skipping notification", {
+        repo: repoConfig.github_full_name,
+        destinationId: destination.destination_id,
+        displayName: destination.display_name,
+      });
+    } else {
+      targets.push({
+        provider: discordProvider,
+        targetUrl: destination.discord_webhook_url,
+        destinationId: destination.destination_id,
+      });
+    }
+  } else if (repoConfig.discord_webhook_url) {
+    // 2. Backward compatibility fallback: repository item still has discord_webhook_url
+    targets.push({
+      provider: discordProvider,
+      targetUrl: repoConfig.discord_webhook_url,
+      destinationId: extractDestinationId(repoConfig.discord_webhook_url),
+    });
+  }
+
+  // Future providers (Phase 2 & Phase 3):
+  // if (repoConfig.telegram_chat_id) { ... }
+  // if (repoConfig.slack_webhook_url) { ... }
+
+  return targets;
+}
+
+/**
+ * Helper to dispatch a NotificationPayload across all configured targets.
  */
 async function dispatchToProviders(
   repoId: string,
@@ -107,39 +147,33 @@ async function dispatchToProviders(
   payload: NotificationPayload,
   repoConfig: RepoConfigItem,
 ): Promise<void> {
-  const providers = getProviders(repoConfig);
+  const targets = await resolveNotificationTargets(repoConfig);
 
-  if (providers.length === 0) {
-    logger.warn("No notification providers configured for repo", {
+  if (targets.length === 0) {
+    logger.warn("No active notification destinations configured for repo", {
       repo: payload.repoFullName,
     });
     return;
   }
 
-  // Send to all configured channels (sequentially in MVP — parallel in Phase 4+)
-  for (const provider of providers) {
-    const targetUrl =
-      provider.channel === "discord"
-        ? repoConfig.discord_webhook_url
-        : undefined;
-
-    const destinationId = extractDestinationId(targetUrl);
-
+  // Send to all configured targets sequentially
+  for (const target of targets) {
     const notificationId = await createNotificationRecord(
       repoId,
       deliveryId,
-      provider.channel,
-      destinationId,
+      target.provider.channel,
+      target.destinationId,
     );
 
     try {
-      const result = await provider.send(payload, targetUrl);
+      const result = await target.provider.send(payload, target.targetUrl);
 
       if (result.success) {
         await markNotificationSent(repoId, notificationId, result.messageId);
         logger.info("Notification delivered", {
-          channel: provider.channel,
+          channel: target.provider.channel,
           repo: payload.repoFullName,
+          destinationId: target.destinationId,
           retried: result.retried,
           retryCount: result.retryCount,
         });
@@ -151,8 +185,9 @@ async function dispatchToProviders(
           result.retryCount,
         );
         logger.error("Notification delivery failed", {
-          channel: provider.channel,
+          channel: target.provider.channel,
           repo: payload.repoFullName,
+          destinationId: target.destinationId,
           error: result.error,
           retryCount: result.retryCount,
         });
@@ -161,8 +196,9 @@ async function dispatchToProviders(
       const errorMessage = error instanceof Error ? error.message : String(error);
       await markNotificationFailed(repoId, notificationId, errorMessage);
       logger.error("Unexpected notification provider exception", {
-        channel: provider.channel,
+        channel: target.provider.channel,
         repo: payload.repoFullName,
+        destinationId: target.destinationId,
         error: errorMessage,
       });
     }

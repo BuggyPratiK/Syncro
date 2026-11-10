@@ -13,6 +13,7 @@ import {
 } from "../../types/notification.types";
 import { getEnv } from "../../config/env";
 import { logger, maskWebhookUrl } from "../../utils/logger";
+import { validateDiscordWebhookUrl } from "../../utils/url-validator";
 import { buildPushEmbed } from "../templates/push.template";
 import { buildPrEmbed } from "../templates/pr.template";
 
@@ -56,6 +57,19 @@ export class DiscordProvider implements NotificationProvider {
       };
     }
 
+    const validation = validateDiscordWebhookUrl(webhookUrl);
+    if (!validation.valid || !validation.cleanedUrl) {
+      return {
+        success: false,
+        channel: this.channel,
+        error: `Invalid Discord webhook URL: ${validation.error}`,
+        retried: false,
+        retryCount: 0,
+      };
+    }
+
+    const validWebhookUrl = validation.cleanedUrl;
+
     const embed =
       payload.type === "pull_request"
         ? buildPrEmbed(payload)
@@ -66,10 +80,11 @@ export class DiscordProvider implements NotificationProvider {
 
     for (let attempt = 0; attempt <= this.config.maxRetries; attempt++) {
       try {
-        const response = await fetch(webhookUrl, {
+        const response = await fetch(validWebhookUrl, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ embeds: [embed] }),
+          redirect: "error", // Prevent SSRF attacks via HTTP redirects
         });
 
         if (response.ok || response.status === 204) {
