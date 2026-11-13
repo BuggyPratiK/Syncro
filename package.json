@@ -9,7 +9,7 @@
         "build:watch": "tsc -p tsconfig.json --watch",
         "lint": "eslint \"src/**/*.ts\" \"infra/**/*.ts\"",
         "lint:fix": "eslint \"src/**/*.ts\" \"infra/**/*.ts\" --fix",
-        "type-check": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.infra.json --noEmit",
+        "type-check": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.infra.json --noEmit && tsc -p scripts/tsconfig.json --noEmit",
         "test": "jest",
         "test:watch": "jest --watch",
         "test:coverage": "jest --coverage",
