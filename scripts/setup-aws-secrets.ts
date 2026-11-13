@@ -1,10 +1,13 @@
 /**
  * Local Secrets Configuration Script
  *
- * Runs locally on your machine to write credentials into .env.local for local
- * development and approved local checks (cdk synth / cdk diff). When CDK runs
- * locally, it reads .env.local and places these values in the synthesized
- * Lambda environment variables.
+ * Runs locally on your machine to write credentials into .env.local for
+ * approved local synthesis and diff checks only (cdk synth / cdk diff). When
+ * CDK runs locally, it reads .env.local and places these values in the
+ * synthesized Lambda environment variables.
+ *
+ * WARNING: synthesized templates, cdk.out and cdk diff output can contain these
+ * sensitive values. Never commit, upload or publicly share them.
  *
  * .env.local is not used by production deploys. Production deploys run only
  * through the GitHub Actions Deploy workflow, using secrets from the protected
@@ -38,7 +41,9 @@ async function main() {
   console.log("             Syncro - Local Secrets Setup              ");
   console.log("=======================================================\n");
   console.log("Configuring your GitHub App and Discord credentials into .env.local.");
-  console.log("For local development and approved local checks (cdk synth / cdk diff) only.");
+  console.log("For approved local synthesis and diff checks (cdk synth / cdk diff) only.");
+  console.log("Warning: synthesized templates, cdk.out and cdk diff output can contain these values.");
+  console.log("Never commit, upload or publicly share them.");
   console.log("Production deploys use the protected GitHub Actions \"production\" environment, not this file.\n");
 
   const region = await ask("AWS Region", process.env.AWS_REGION || "ap-southeast-2");
@@ -117,7 +122,9 @@ DISCORD_WEBHOOK_URL=${discordUrl}
   console.log("Local configuration only. It is not used by production deploys.");
   console.log("=======================================================\n");
   console.log("Next step:");
-  console.log("  Use .env.local for local development and approved local checks (cdk synth / cdk diff).");
+  console.log("  Use .env.local only for approved local synthesis and diff checks (cdk synth / cdk diff).");
+  console.log("  Keep synthesized templates, cdk.out and diff output local: never commit, upload or");
+  console.log("  publicly share them.");
   console.log("  Production deploys run only through the GitHub Actions Deploy workflow, after approval");
   console.log("  on the protected \"production\" environment (see README \"Deploy to AWS\").\n");
 
