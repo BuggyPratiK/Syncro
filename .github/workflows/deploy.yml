@@ -4,6 +4,15 @@ on:
   push:
     branches: [main]
 
+# Serialize production deployments. Only this workflow joins the group.
+# - cancel-in-progress: false never cancels a deployment that is already running.
+# - With GitHub's default queueing there is at most one pending run per group;
+#   a newer run replaces (cancels) an older pending one, so stale pending runs
+#   cannot pile up. Ordering between runs is not guaranteed.
+concurrency:
+  group: syncro-production-deploy
+  cancel-in-progress: false
+
 jobs:
   deploy:
     name: CDK Deploy to AWS
@@ -31,12 +40,55 @@ jobs:
       - name: Run Tests
         run: npm test
 
+      # Stale-commit guard: a point-in-time check, NOT an atomic lock. It fails a
+      # run whose commit is no longer the head of origin/main at the moment of the
+      # check. main can still advance after the final check or during cdk deploy
+      # (time-of-check/time-of-use window); the one-stage-at-a-time operating rule
+      # covers that window.
+      - name: Stale-commit guard (before credentials)
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ "${GITHUB_REF}" != "refs/heads/main" ]; then
+            echo "::error::Deploy is restricted to refs/heads/main (got ${GITHUB_REF}); refusing to deploy"
+            exit 1
+          fi
+          HEAD_MAIN="$(git ls-remote --exit-code origin refs/heads/main | cut -f1)"
+          if ! [[ "${HEAD_MAIN}" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "::error::Could not resolve the current origin/main commit; refusing to deploy"
+            exit 1
+          fi
+          if [ "${HEAD_MAIN}" != "${GITHUB_SHA}" ]; then
+            echo "::error::Run commit ${GITHUB_SHA} is not the current main head ${HEAD_MAIN}; refusing to deploy"
+            exit 1
+          fi
+          echo "Run commit ${GITHUB_SHA} is the current main head."
+
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ secrets.AWS_REGION || 'ap-southeast-2' }}
+
+      - name: Stale-commit guard (immediately before deploy)
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ "${GITHUB_REF}" != "refs/heads/main" ]; then
+            echo "::error::Deploy is restricted to refs/heads/main (got ${GITHUB_REF}); refusing to deploy"
+            exit 1
+          fi
+          HEAD_MAIN="$(git ls-remote --exit-code origin refs/heads/main | cut -f1)"
+          if ! [[ "${HEAD_MAIN}" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "::error::Could not resolve the current origin/main commit; refusing to deploy"
+            exit 1
+          fi
+          if [ "${HEAD_MAIN}" != "${GITHUB_SHA}" ]; then
+            echo "::error::Run commit ${GITHUB_SHA} is not the current main head ${HEAD_MAIN}; refusing to deploy"
+            exit 1
+          fi
+          echo "Run commit ${GITHUB_SHA} is the current main head."
 
       - name: CDK Deploy
         run: npm run cdk:deploy
@@ -47,3 +99,8 @@ jobs:
           DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
           AWS_REGION: ${{ secrets.AWS_REGION || 'ap-southeast-2' }}
           LOG_LEVEL: ${{ secrets.LOG_LEVEL || 'info' }}
+          # Legacy compatibility (non-secret `production` environment variables).
+          # Values are never committed. Ignored by the stack until PR-1 reads them.
+          LEGACY_COMPAT_ENABLED: ${{ vars.LEGACY_COMPAT_ENABLED }}
+          LEGACY_COMPAT_INSTALLATION_ID: ${{ vars.LEGACY_COMPAT_INSTALLATION_ID }}
+          LEGACY_COMPAT_REPO_IDS: ${{ vars.LEGACY_COMPAT_REPO_IDS }}

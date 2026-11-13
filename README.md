@@ -74,7 +74,7 @@ flowchart TD
 - **Single-Table Design**: All entities (Repository Configs, Delivery Deduplication Records, Commit History, Notification Logs) live in a single DynamoDB table with composite partition and sort keys (`PK` / `SK`).
 - **Cryptographic Security**: Every incoming payload is validated using HMAC-SHA256 signatures with constant-time equality comparisons (`crypto.timingSafeEqual`) to prevent timing attack vulnerabilities.
 - **Resilient Delivery**: Automatic retry with exponential backoff on HTTP `429 Too Many Requests` respecting Discord's `Retry-After` rate-limit headers.
-- **Infrastructure as Code (IaC)**: Fully defined and reproducible using **AWS CDK (TypeScript)**. One-command deployments and teardowns.
+- **Infrastructure as Code (IaC)**: Fully defined and reproducible using **AWS CDK (TypeScript)**. Production deploys run only through the GitHub Actions Deploy workflow (see [Deploy to AWS](#3-deploy-to-aws)).
 - **Comprehensive Test Suite & E2E Layer**: 23 test suites and 175 tests covering **~93% of the codebase**, including an end-to-end integration test layer validating the pipeline from API Gateway -> Lambda -> DynamoDB -> Discord mock.
 
 ---
@@ -142,13 +142,50 @@ npm run setup:secrets
 
 ### 3. Deploy to AWS
 
-Deploy the complete serverless stack in one command:
+Production deploys happen **only** through the GitHub Actions **Deploy** workflow (`.github/workflows/deploy.yml`). It runs on pushes to `main`:
+
+1. Open a pull request to `main`. The pull request must pass the `Lint, Type-Check, Test` check and be reviewed before merge.
+2. Merging into `main` starts a Deploy run. The run waits for approval on the `production` environment.
+3. Approve only a run whose commit is the current head of `main`.
+4. After the deploy, verify the deployed commit and its result before merging anything else.
+
+**Safeguards in the workflow:**
+- **Serialized deploys.** Runs share the `syncro-production-deploy` concurrency group. A running deploy is never cancelled. At most one run is pending, and a newer run replaces an older pending one.
+- **Stale-commit guard.** The run fails if its commit is no longer the head of `main`. It checks twice: before AWS credentials are configured, and again immediately before `cdk deploy`.
+
+The guard is a point-in-time check, **not a lock**. `main` can still move after the last check or while `cdk deploy` runs. **Do not merge into `main` while a Deploy run is waiting, pending or running.**
+
+**Re-running Deploy runs:**
+- **Never re-run a Deploy run from a commit that precedes W1** (the change that added the concurrency group and the stale-commit guard). A re-run executes the workflow definition from the run's original commit, so such a run has neither safeguard.
+- For a failed deploy, re-run **only the newest eligible post-W1 run**, and only after confirming that its commit matches the current head of `main`.
+
+This is an operating rule. W1 does not technically prevent re-runs of historical runs.
+
+**Local commands are for checks only:**
 
 ```bash
-npm run cdk:deploy
+npm run lint
+npm run type-check
+npm test
+npm run cdk:synth
+npm run cdk:diff   # output can include Lambda environment values: keep it local, never paste or publish it
 ```
 
-Upon completion, CDK outputs your live API Gateway webhook endpoint:
+**Prohibited against production:**
+- **Local deploys:** `npm run cdk:deploy` / `npx cdk deploy`.
+- **`cdk destroy`** (`npm run cdk:destroy`). This is prohibited outright and is not a break-glass operation. Destroying production needs a separate disaster-recovery decision.
+- **Direct AWS console or CLI changes** to Lambda, CloudFormation or DynamoDB infrastructure or configuration, except under break-glass.
+- **`cdk bootstrap`** as a routine step. Bootstrapping the production account is a separately planned infrastructure operation and needs explicit approval.
+
+**Break-glass:** a deploy or repair outside the Deploy workflow is allowed only if all of the following hold:
+- the repository owner explicitly decides on it;
+- merges into `main` are paused;
+- no Deploy run is waiting, pending or running;
+- evidence of what was done is recorded, without secret values.
+
+> These are operating rules, not IAM enforcement. An AWS administrator can still bypass the workflow technically. A least-privilege deployment identity with OIDC is planned future hardening.
+
+The stack outputs, including your live API Gateway webhook endpoint, appear in the Deploy run log:
 ```text
 Outputs:
 SyncroStack.WebhookUrl = https://<api-id>.execute-api.<region>.amazonaws.com/v1/webhooks/github
