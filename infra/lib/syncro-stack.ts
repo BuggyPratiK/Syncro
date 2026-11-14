@@ -45,7 +45,7 @@ export class SyncroStack extends cdk.Stack {
     // Lambda Function with full dependency bundling via esbuild
     const fn = new lambdaNodejs.NodejsFunction(this, "SyncroHandler", {
       functionName: "syncro-webhook-handler",
-      runtime: lambda.Runtime.NODEJS_22_X,
+      runtime: lambda.Runtime.NODEJS_24_X,
       entry: "src/handler.ts",
       handler: "handler",
       memorySize: 256,
@@ -54,7 +54,7 @@ export class SyncroStack extends cdk.Stack {
       bundling: {
         minify: true,
         sourceMap: true,
-        target: "node22",
+        target: "node24",
       },
       environment: {
         NODE_ENV: "production",

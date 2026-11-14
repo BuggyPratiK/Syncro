@@ -3,6 +3,9 @@
     "version": "1.0.0",
     "description": "GitHub repository notification bot - AWS Lambda + DynamoDB + Discord",
     "private": true,
+    "engines": {
+        "node": "24.x"
+    },
     "scripts": {
         "build": "tsc -p tsconfig.json",
         "build:infra": "tsc -p tsconfig.infra.json",
@@ -37,7 +40,7 @@
         "@aws-sdk/client-ssm": "^3.1154.0",
         "@types/aws-lambda": "^8.10.145",
         "@types/jest": "^29.5.14",
-        "@types/node": "^22.7.7",
+        "@types/node": "^24.19.2",
         "@typescript-eslint/eslint-plugin": "^8.10.0",
         "@typescript-eslint/parser": "^8.10.0",
         "aws-cdk": "^2.1146.1",
