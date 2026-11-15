@@ -15,6 +15,7 @@ import {
 import { deriveDestinationParamName, senderParamNames } from "../../src/secrets/param-names";
 import { parseWebhookEnv } from "../../src/config/env";
 import { SECRET_VALUE_PATTERNS } from "../../scripts/check-deploy-env-allowlist";
+import { TABLE_SCHEMA } from "../ddb-local/harness";
 
 const ENV = { account: "123456789012", region: "ap-southeast-2" };
 
@@ -94,6 +95,30 @@ describe("SyncroStack", () => {
     // The table name is a CloudFormation reference here; substitute a value to validate the rest.
     const asStrings = Object.fromEntries(Object.entries(env).map(([k, v]) => [k, typeof v === "string" ? v : "syncro"]));
     expect(() => parseWebhookEnv(asStrings)).not.toThrow();
+  });
+
+  it("keeps the Lambda environment well under the 4 KB limit", () => {
+    const env = lambdaEnv(template);
+    const bytes = Object.entries(env).reduce((n, [k, v]) => n + k.length + (typeof v === "string" ? v.length : 64), 0);
+    expect(bytes).toBeLessThan(1024);
+  });
+
+  it("the DynamoDB Local test table has the same schema as the production table", () => {
+    const table = Object.values(template.findResources("AWS::DynamoDB::Table"))[0] as { Properties: Record<string, unknown> };
+    const p = table.Properties as {
+      BillingMode: string;
+      KeySchema: unknown[];
+      AttributeDefinitions: Array<{ AttributeName: string }>;
+      GlobalSecondaryIndexes: unknown[];
+      TimeToLiveSpecification: { AttributeName: string; Enabled: boolean };
+    };
+    const byName = (a: { AttributeName?: string }, b: { AttributeName?: string }) => String(a.AttributeName).localeCompare(String(b.AttributeName));
+    expect(p.BillingMode).toBe(TABLE_SCHEMA.BillingMode);
+    expect(p.KeySchema).toEqual(TABLE_SCHEMA.KeySchema);
+    expect([...p.AttributeDefinitions].sort(byName)).toEqual([...(TABLE_SCHEMA.AttributeDefinitions ?? [])].sort(byName));
+    expect(p.GlobalSecondaryIndexes).toEqual(TABLE_SCHEMA.GlobalSecondaryIndexes);
+    // TTL is not part of CreateTable; DynamoDB Local tests check expiry explicitly instead of relying on deletion.
+    expect(p.TimeToLiveSpecification).toEqual({ AttributeName: "ttl", Enabled: true });
   });
 
   it("contains no secret-looking value anywhere in the template", () => {

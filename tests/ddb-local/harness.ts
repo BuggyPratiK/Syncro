@@ -10,6 +10,7 @@
 
 import {
   CreateTableCommand,
+  type CreateTableCommandInput,
   DeleteTableCommand,
   DynamoDBClient,
   waitUntilTableExists,
@@ -30,33 +31,42 @@ export function tableName(): string {
   return name;
 }
 
+/**
+ * Key schema, attributes, index and billing of the production table
+ * (infra/lib/syncro-stack.ts). A unit test checks this against the
+ * CDK-synthesized template so the two cannot drift.
+ */
+export const TABLE_SCHEMA: Omit<CreateTableCommandInput, "TableName"> = {
+  BillingMode: "PAY_PER_REQUEST",
+  AttributeDefinitions: [
+    { AttributeName: "PK", AttributeType: "S" },
+    { AttributeName: "SK", AttributeType: "S" },
+    { AttributeName: "GSI1PK", AttributeType: "S" },
+    { AttributeName: "created_at", AttributeType: "S" },
+  ],
+  KeySchema: [
+    { AttributeName: "PK", KeyType: "HASH" },
+    { AttributeName: "SK", KeyType: "RANGE" },
+  ],
+  GlobalSecondaryIndexes: [
+    {
+      IndexName: "type-index",
+      KeySchema: [
+        { AttributeName: "GSI1PK", KeyType: "HASH" },
+        { AttributeName: "created_at", KeyType: "RANGE" },
+      ],
+      Projection: { ProjectionType: "ALL" },
+    },
+  ],
+};
+
 export async function createTestTable(): Promise<void> {
   const client = rawClient();
   try {
     await client.send(
       new CreateTableCommand({
         TableName: tableName(),
-        BillingMode: "PAY_PER_REQUEST",
-        AttributeDefinitions: [
-          { AttributeName: "PK", AttributeType: "S" },
-          { AttributeName: "SK", AttributeType: "S" },
-          { AttributeName: "GSI1PK", AttributeType: "S" },
-          { AttributeName: "created_at", AttributeType: "S" },
-        ],
-        KeySchema: [
-          { AttributeName: "PK", KeyType: "HASH" },
-          { AttributeName: "SK", KeyType: "RANGE" },
-        ],
-        GlobalSecondaryIndexes: [
-          {
-            IndexName: "type-index",
-            KeySchema: [
-              { AttributeName: "GSI1PK", KeyType: "HASH" },
-              { AttributeName: "created_at", KeyType: "RANGE" },
-            ],
-            Projection: { ProjectionType: "ALL" },
-          },
-        ],
+        ...TABLE_SCHEMA,
       }),
     );
     await waitUntilTableExists({ client, maxWaitTime: 30 }, { TableName: tableName() });
@@ -90,7 +100,11 @@ export async function scanAll(): Promise<Array<Record<string, unknown>>> {
   try {
     do {
       const page = await doc.send(
-        new ScanCommand({ TableName: tableName(), ConsistentRead: true, ExclusiveStartKey: startKey }),
+        new ScanCommand({
+          TableName: tableName(),
+          ConsistentRead: true,
+          ExclusiveStartKey: startKey,
+        }),
       );
       items.push(...((page.Items ?? []) as Array<Record<string, unknown>>));
       startKey = page.LastEvaluatedKey;
@@ -102,7 +116,10 @@ export async function scanAll(): Promise<Array<Record<string, unknown>>> {
 }
 
 /** Items whose PK starts with `pkPrefix` (and SK with `skPrefix`, if given). */
-export async function itemsWith(pkPrefix: string, skPrefix = ""): Promise<Array<Record<string, unknown>>> {
+export async function itemsWith(
+  pkPrefix: string,
+  skPrefix = "",
+): Promise<Array<Record<string, unknown>>> {
   return (await scanAll()).filter(
     (i) => String(i.PK).startsWith(pkPrefix) && String(i.SK).startsWith(skPrefix),
   );
