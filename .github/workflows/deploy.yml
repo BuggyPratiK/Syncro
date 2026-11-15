@@ -64,6 +64,29 @@ jobs:
           fi
           echo "Run commit ${GITHUB_SHA} is the current main head."
 
+      # Only allowlisted, non-secret values may reach the CDK deploy step;
+      # application secrets live in SSM Parameter Store.
+      - name: Deploy env allowlist check
+        run: npx ts-node scripts/check-deploy-env-allowlist.ts
+
+      # Cutover gate: this release delivers webhooks only for repositories owned
+      # by a workspace; repositories registered the old way are ignored. Deploying
+      # without first making every repository that must keep notifying
+      # workspace-owned (or explicitly accepting the gap) would silently stop
+      # their notifications. Set the `production` environment variable
+      # TENANT_CUTOVER_READY to "confirmed" only after that readiness check.
+      - name: Tenant cutover readiness gate
+        shell: bash
+        env:
+          TENANT_CUTOVER_READY: ${{ vars.TENANT_CUTOVER_READY }}
+        run: |
+          set -euo pipefail
+          if [ "${TENANT_CUTOVER_READY:-}" != "confirmed" ]; then
+            echo "::error::Tenant cutover readiness is not confirmed (production variable TENANT_CUTOVER_READY must be 'confirmed'); refusing to deploy"
+            exit 1
+          fi
+          echo "Tenant cutover readiness confirmed."
+
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
@@ -92,15 +115,12 @@ jobs:
 
       - name: CDK Deploy
         run: npm run cdk:deploy
+        # Non-secret values only (enforced by the allowlist check above). The
+        # GitHub App private key and webhook secret are read by the Lambda from
+        # SSM Parameter Store at runtime and never pass through this workflow.
         env:
-          GITHUB_APP_ID: ${{ secrets.GH_APP_ID }}
-          GITHUB_APP_PRIVATE_KEY: ${{ secrets.GH_APP_PRIVATE_KEY }}
-          GITHUB_WEBHOOK_SECRET: ${{ secrets.GH_WEBHOOK_SECRET }}
-          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+          GITHUB_APP_ID: ${{ vars.GH_APP_ID }}
           AWS_REGION: ${{ secrets.AWS_REGION || 'ap-southeast-2' }}
           LOG_LEVEL: ${{ secrets.LOG_LEVEL || 'info' }}
-          # Legacy compatibility (non-secret `production` environment variables).
-          # Values are never committed. Ignored by the stack until PR-1 reads them.
-          LEGACY_COMPAT_ENABLED: ${{ vars.LEGACY_COMPAT_ENABLED }}
-          LEGACY_COMPAT_INSTALLATION_ID: ${{ vars.LEGACY_COMPAT_INSTALLATION_ID }}
-          LEGACY_COMPAT_REPO_IDS: ${{ vars.LEGACY_COMPAT_REPO_IDS }}
+          # Change this variable to make running Lambda containers re-read secrets after a rotation.
+          SECRETS_EPOCH: ${{ vars.SECRETS_EPOCH }}
