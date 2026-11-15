@@ -29,13 +29,15 @@
  */
 
 import { createHash, randomUUID } from "crypto";
-import { GetCommand, TransactWriteCommand } from "@aws-sdk/lib-dynamodb";
+import { BatchGetCommand, GetCommand, QueryCommand, TransactWriteCommand } from "@aws-sdk/lib-dynamodb";
 import { ddb } from "../client";
 import { tableName, tenantKeys, utcDayOf } from "../table";
 import { ContractError } from "../../contracts/errors";
 import { assertId } from "../../contracts/ids";
 import { SIGNUP, SIGNUP_MODES, type SignupMode } from "../../contracts/constants";
 import type { BootstrapResult } from "../../contracts/data-ops";
+import type { MeDto, WorkspaceMembershipDto } from "../../contracts/dto";
+import { ROLES, type Role } from "../../contracts/roles";
 import type {
   SignupConfigItem,
   UserMembershipItem,
@@ -284,4 +286,58 @@ export async function bootstrapUser(userId: string, idpIssuer: string): Promise<
   }
 
   throw new ContractError("bootstrap_contention");
+}
+
+// ─── Current user ────────────────────────────────────────────────────────────
+
+/**
+ * The signed-in user's profile and workspaces (read-only; never creates
+ * anything). A workspace is listed only when both the workspace and the
+ * authoritative membership (`WS#<ws>/MEMBER#<uid>`) are active; the user-side
+ * membership copy is used only to find candidate workspaces.
+ */
+export async function getMe(userId: string): Promise<MeDto> {
+  assertId("userId", userId);
+  const table = tableName();
+
+  const [profileOut, membershipsOut] = await Promise.all([
+    ddb.send(new GetCommand({ TableName: table, Key: tenantKeys.userProfile(userId), ConsistentRead: true })),
+    ddb.send(
+      new QueryCommand({
+        TableName: table,
+        KeyConditionExpression: "PK = :pk AND begins_with(SK, :m)",
+        ExpressionAttributeValues: { ":pk": tenantKeys.userProfile(userId).PK, ":m": "MEMBERSHIP#" },
+        ConsistentRead: true,
+      }),
+    ),
+  ]);
+  const profile = profileOut.Item as UserProfileItem | undefined;
+  const candidates = ((membershipsOut.Items ?? []) as UserMembershipItem[])
+    .filter((m) => m.status === "active")
+    .map((m) => m.workspace_id);
+
+  const workspaces: WorkspaceMembershipDto[] = [];
+  // BatchGet takes up to 100 keys: two per workspace.
+  for (let i = 0; i < candidates.length; i += 50) {
+    const chunk = candidates.slice(i, i + 50);
+    let pending = chunk.flatMap((ws) => [tenantKeys.workspace(ws), tenantKeys.workspaceMember(ws, userId)]);
+    const found: Array<Record<string, unknown>> = [];
+    for (let attempt = 0; attempt < 2 && pending.length > 0; attempt++) {
+      const out = await ddb.send(new BatchGetCommand({ RequestItems: { [table]: { Keys: pending, ConsistentRead: true } } }));
+      found.push(...((out.Responses?.[table] ?? []) as Array<Record<string, unknown>>));
+      pending = (out.UnprocessedKeys?.[table]?.Keys ?? []) as typeof pending;
+    }
+    for (const ws of chunk) {
+      const meta = found.find((x) => x.PK === `WS#${ws}` && x.SK === "META") as WorkspaceItem | undefined;
+      const member = found.find((x) => x.PK === `WS#${ws}` && x.SK === `MEMBER#${userId}`) as WorkspaceMemberItem | undefined;
+      if (meta?.status === "active" && member?.status === "active" && (ROLES as readonly string[]).includes(member.role)) {
+        workspaces.push({ workspaceId: ws, role: member.role as Role });
+      }
+    }
+  }
+
+  return {
+    ...(profile ? { profile: { status: profile.status, createdAt: profile.created_at } } : {}),
+    workspaces,
+  };
 }

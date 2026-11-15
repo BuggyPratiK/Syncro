@@ -9,7 +9,7 @@
  *   "not found", so one tenant can never learn about another tenant's data.
  */
 
-import type { DeliveryDto, InstallationAccountType, Page } from "./dto";
+import type { DeliveryDto, InstallationAccountType, MeDto, Page } from "./dto";
 import type { RateLimitBucket } from "./constants";
 import type { GitHubStateRejectReason } from "./errors";
 import type { Role } from "./roles";
@@ -102,6 +102,11 @@ export interface TenancyOps {
    * `bootstrap_contention`. Nothing is written when a request is refused.
    */
   bootstrapUser(userId: string, idpIssuer: string): Promise<BootstrapResult>;
+  /**
+   * Profile and active workspaces of the signed-in user, for `GET /api/me`.
+   * Read-only: never creates a profile or workspace.
+   */
+  getMe(userId: string): Promise<MeDto>;
 }
 
 // ─── Per-user rate limiting ──────────────────────────────────────────────────
