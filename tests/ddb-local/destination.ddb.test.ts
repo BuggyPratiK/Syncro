@@ -129,9 +129,10 @@ describe("createDestination", () => {
     expect(await workspaceCount(ctx)).toBe(1);
   });
 
-  it("only the owner may create, and a suspended workspace cannot", async () => {
+  it("a member may not create, an admin may, and a suspended workspace cannot", async () => {
     const ctx = await newOwner();
     expect(await code(createDestination(asRole(ctx, "member"), { displayName: "X", webhookUrl: VALID_WEBHOOK }, fakeWriter()))).toBe("forbidden");
+    await expect(createDestination(asRole(ctx, "admin"), { displayName: "By admin", webhookUrl: VALID_WEBHOOK }, fakeWriter())).resolves.toMatchObject({ status: "active" });
     await ddb.send(
       new UpdateCommand({
         TableName: tableName(),

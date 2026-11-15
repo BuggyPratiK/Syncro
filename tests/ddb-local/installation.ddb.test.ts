@@ -139,11 +139,13 @@ describe("claimInstallation", () => {
     expect((await meta(ctx)).github_user_id).toBeUndefined();
   });
 
-  it("only the owner role may claim", async () => {
+  it("a member may not claim; an admin may (data-layer minimum is admin)", async () => {
     const ctx = await newOwner();
     expect(await code(claimInstallation(asRole(ctx, "member"), verifiedInstallation({ installationId: ghId(), githubUserId: ghId() })))).toBe(
       "forbidden",
     );
+    const result = await claimInstallation(asRole(ctx, "admin"), verifiedInstallation({ installationId: ghId(), githubUserId: ghId() }));
+    expect(result.created).toBe(true);
   });
 
   it("a suspended workspace cannot claim", async () => {

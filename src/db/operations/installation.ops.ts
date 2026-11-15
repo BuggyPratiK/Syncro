@@ -116,7 +116,8 @@ export async function claimInstallation(
   verified: VerifiedInstallation,
   nowMs: number = Date.now(),
 ): Promise<ClaimInstallationResult> {
-  requireRole(ctx, "owner");
+  // Data-layer minimum is admin (owner or admin); the HTTP route table may require more.
+  requireRole(ctx, "admin");
   assertFreshVerification(verified.verifiedAt, nowMs);
   const installationId = assertId("githubId", verified.installationId);
   const githubUserId = assertId("githubId", verified.githubUserId);

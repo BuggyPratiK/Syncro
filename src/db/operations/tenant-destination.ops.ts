@@ -155,7 +155,8 @@ export async function createDestination(
   writer: DestinationSecretWriter,
   nowMs: number = Date.now(),
 ): Promise<DestinationRecord> {
-  requireRole(ctx, "owner");
+  // Data-layer minimum is admin (owner or admin); the HTTP route table may require more.
+  requireRole(ctx, "admin");
   const displayName = parseDisplayName(input.displayName);
   const { url, webhookId } = parseWebhookUrl(input.webhookUrl);
 
@@ -232,7 +233,8 @@ export async function updateDestination(
   patch: { displayName?: string; isActive?: boolean },
   nowMs: number = Date.now(),
 ): Promise<DestinationRecord> {
-  requireRole(ctx, "owner");
+  // Data-layer minimum is admin (owner or admin); the HTTP route table may require more.
+  requireRole(ctx, "admin");
   if (!isValidId("destinationId", destinationId)) throw new ContractError("not_found");
   if (patch.displayName === undefined && patch.isActive === undefined) throw new ContractError("invalid_request");
   if (patch.isActive !== undefined && typeof patch.isActive !== "boolean") throw new ContractError("invalid_request");
@@ -290,7 +292,8 @@ export async function replaceDestinationWebhook(
   writer: DestinationSecretWriter,
   nowMs: number = Date.now(),
 ): Promise<DestinationRecord> {
-  requireRole(ctx, "owner");
+  // Data-layer minimum is admin (owner or admin); the HTTP route table may require more.
+  requireRole(ctx, "admin");
   if (!isValidId("destinationId", destinationId)) throw new ContractError("not_found");
   const { url, webhookId } = parseWebhookUrl(webhookUrl);
 

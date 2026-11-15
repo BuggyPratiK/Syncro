@@ -8,11 +8,11 @@
 import { GetCommand, PutCommand } from "@aws-sdk/lib-dynamodb";
 import { ddb } from "../../src/db/client";
 import { claimInstallation } from "../../src/db/operations/installation.ops";
-import { getVerifiedListing, saveVerifiedListing } from "../../src/db/operations/listing.ops";
+import { ListingTooLargeError, MAX_LISTING_REPOS, getVerifiedListing, saveVerifiedListing } from "../../src/db/operations/listing.ops";
 import { getRepo, listRepos, registerRepo, updateRepo } from "../../src/db/operations/tenant-repository.ops";
 import { createDestination, updateDestination } from "../../src/db/operations/tenant-destination.ops";
 import { ContractError, WORKSPACE_LIMITS, type WorkspaceContext } from "../../src/contracts";
-import { VALID_WEBHOOK, fakeWriter, ghId, newOwner, openSignups, verifiedInstallation, verifiedListing } from "./fixtures";
+import { VALID_WEBHOOK, asRole, fakeWriter, ghId, newOwner, openSignups, verifiedInstallation, verifiedListing } from "./fixtures";
 import { itemsWith, tableName, useTestTable } from "./harness";
 
 useTestTable();
@@ -65,6 +65,31 @@ describe("listing snapshots", () => {
     expect(await code(saveVerifiedListing(ctx, verifiedListing({ installationId: iid, githubUserId: ghId(), repos: [] })))).toBe(
       "github_identity_mismatch",
     );
+  });
+
+  it(`a listing over ${MAX_LISTING_REPOS} repositories is refused explicitly: never truncated, nothing stored`, async () => {
+    const { ctx, gid, iid } = await setup();
+    const repos = Array.from({ length: MAX_LISTING_REPOS + 1 }, (_, i) => ({ repoId: String(70_000 + i) }));
+    const error = await saveVerifiedListing(ctx, verifiedListing({ installationId: iid, githubUserId: gid, repos })).catch((e: unknown) => e);
+    expect(error).toBeInstanceOf(ListingTooLargeError);
+    expect((error as ListingTooLargeError).repoCount).toBe(MAX_LISTING_REPOS + 1);
+    expect((await itemsWith("GHLISTING#")).filter((i) => i.workspace_id === ctx.workspaceId)).toHaveLength(0);
+
+    // Exactly at the cap is fine and keeps every repository.
+    const atCap = await saveVerifiedListing(ctx, verifiedListing({ installationId: iid, githubUserId: gid, repos: repos.slice(0, MAX_LISTING_REPOS) }));
+    expect(atCap.repos).toHaveLength(MAX_LISTING_REPOS);
+  });
+
+  it("a member may not save a listing or register a repo; an admin may", async () => {
+    const { ctx, gid, iid } = await setup();
+    const member = asRole(ctx, "member");
+    const admin = asRole(ctx, "admin");
+    const v = verifiedListing({ installationId: iid, githubUserId: gid, repos: [{ repoId: "8001" }] });
+    expect(await code(saveVerifiedListing(member, v))).toBe("forbidden");
+    const snap = await saveVerifiedListing(admin, v);
+    expect(await code(registerRepo(member, { listingId: snap.listingId, repoId: "8001" }))).toBe("forbidden");
+    await expect(registerRepo(admin, { listingId: snap.listingId, repoId: "8001" })).resolves.toMatchObject({ isActive: true });
+    expect(await code(updateRepo(member, "8001", { watchedBranch: "x" }))).toBe("forbidden");
   });
 
   it("an expired snapshot is not returned", async () => {

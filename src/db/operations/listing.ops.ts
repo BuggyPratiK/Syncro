@@ -30,6 +30,23 @@ import { assertFreshVerification } from "./installation.ops";
  * DynamoDB's 400 KB item limit (each entry is roughly 150 bytes).
  */
 export const MAX_LISTING_REPOS = 1000;
+
+/**
+ * The installation lists more repositories than one snapshot can hold. The
+ * listing is never truncated or filtered (that would silently hide
+ * repositories); nothing is stored and the request fails. Not a public error
+ * code: the HTTP layer reports it as an internal error until a dedicated code
+ * is added to the contract.
+ */
+export class ListingTooLargeError extends Error {
+  readonly repoCount: number;
+  constructor(repoCount: number) {
+    super(`Repository listing has ${repoCount} repositories; the maximum is ${MAX_LISTING_REPOS}`);
+    this.name = "ListingTooLargeError";
+    this.repoCount = repoCount;
+  }
+}
+
 const FULL_NAME = /^[A-Za-z0-9_.-]{1,39}\/[A-Za-z0-9_.-]{1,100}$/;
 
 function toSnapshot(item: GitHubListingItem): ListingSnapshot {
@@ -48,12 +65,13 @@ export async function saveVerifiedListing(
   listing: VerifiedRepositoryListing,
   nowMs: number = Date.now(),
 ): Promise<ListingSnapshot> {
-  requireRole(ctx, "owner");
+  // Data-layer minimum is admin (owner or admin); the HTTP route table may require more.
+  requireRole(ctx, "admin");
   assertFreshVerification(listing.verifiedAt, nowMs);
   const installationId = assertId("githubId", listing.installationId);
   const githubUserId = assertId("githubId", listing.githubUserId);
   if (listing.repos.length > MAX_LISTING_REPOS) {
-    throw new Error(`Listing has more than ${MAX_LISTING_REPOS} repositories`);
+    throw new ListingTooLargeError(listing.repos.length);
   }
   const repos = listing.repos.map((r) => {
     if (!isValidId("githubId", r.repoId) || !FULL_NAME.test(r.fullName) || typeof r.admin !== "boolean") {

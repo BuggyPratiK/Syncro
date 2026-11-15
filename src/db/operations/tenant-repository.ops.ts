@@ -136,7 +136,8 @@ export async function registerRepo(
   input: RegisterRepoInput,
   nowMs: number = Date.now(),
 ): Promise<RepoRecord> {
-  requireRole(ctx, "owner");
+  // Data-layer minimum is admin (owner or admin); the HTTP route table may require more.
+  requireRole(ctx, "admin");
   if (!isValidId("githubId", input.repoId) || !isValidId("listingId", input.listingId)) {
     throw new ContractError("invalid_request");
   }
@@ -225,7 +226,8 @@ export async function updateRepo(
   patch: UpdateRepoInput,
   nowMs: number = Date.now(),
 ): Promise<RepoRecord> {
-  requireRole(ctx, "owner");
+  // Data-layer minimum is admin (owner or admin); the HTTP route table may require more.
+  requireRole(ctx, "admin");
   if (!isValidId("githubId", repoId)) throw new ContractError("not_found");
   if (patch.isActive !== undefined && typeof patch.isActive !== "boolean") throw new ContractError("invalid_request");
   if (patch.destinationId && !isValidId("destinationId", patch.destinationId)) throw new ContractError("invalid_request");
