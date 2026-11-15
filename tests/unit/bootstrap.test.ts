@@ -243,6 +243,34 @@ describe("bootstrapUser: transaction", () => {
   });
 });
 
+describe("bootstrapUser: idempotency token", () => {
+  it("is stable for the same logical transaction and distinct for different ones", async () => {
+    // Same user + same workspace ID → same token (a retried send of this attempt).
+    const tokens: string[] = [];
+    for (let i = 0; i < 2; i++) {
+      const fake = fakeSend({ txResults: [named("ValidationException")] });
+      install(fake, [WS1]);
+      await bootstrapUser(UID, ISS).catch(() => undefined);
+      tokens.push(fake.txCalls()[0].input.ClientRequestToken!);
+    }
+    expect(tokens[0]).toBe(tokens[1]);
+    expect(tokens[0]).toMatch(/^[0-9a-f]{36}$/);
+
+    // A new attempt (new workspace ID) or another user → different token.
+    const retry = fakeSend({ txResults: [cancelled(["None", "ConditionalCheckFailed", "None", "None", "None"]), "ok"] });
+    install(retry, [WS1, WS2]);
+    await bootstrapUser(UID, ISS);
+    const [first, second] = retry.txCalls().map((t) => t.input.ClientRequestToken);
+    expect(first).toBe(tokens[0]);
+    expect(second).not.toBe(first);
+
+    const other = fakeSend({});
+    install(other, [WS1]);
+    await bootstrapUser("logto:zzzzzzzzzzzz", ISS);
+    expect(other.txCalls()[0].input.ClientRequestToken).not.toBe(tokens[0]);
+  });
+});
+
 describe("bootstrapUser: input validation", () => {
   it.each(["user_123", "logto:ABC", "logto:abcdef123456#x"])("rejects user id %s before any read", async (uid) => {
     const fake = fakeSend({});
