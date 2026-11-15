@@ -48,6 +48,19 @@ export default [
         { selector: "MemberExpression[property.name='discord_webhook_url']", message: STORED_URL_MESSAGE },
         { selector: "Literal[value='discord_webhook_url']", message: STORED_URL_MESSAGE },
       ],
+      // Webhooks are delivered only through the workspace path; the older global
+      // repository/destination operations must never be reachable from it.
+      "no-restricted-imports": [
+        "error",
+        {
+          patterns: [
+            {
+              group: ["**/db/operations/destination.ops", "**/db/operations/repository.ops", "**/services/destination.service", "**/services/repository.service"],
+              message: "The send path resolves repositories and destinations only through the workspace path (webhooks/resolve-target).",
+            },
+          ],
+        },
+      ],
     },
   },
   {

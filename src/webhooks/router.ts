@@ -57,6 +57,7 @@ export async function routeWebhookEvent(
       await handlePullRequestEvent(
         parsedPayload as GitHubPullRequestPayload,
         deliveryId,
+        installationId,
         deadline,
       );
       return { handled: true, eventType };
