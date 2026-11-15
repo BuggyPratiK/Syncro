@@ -1,13 +1,13 @@
 import { handlePushEvent } from "../../src/webhooks/handlers/push.handler";
-import * as repoService from "../../src/services/repository.service";
+import * as resolver from "../../src/webhooks/resolve-target";
 import * as enrichmentService from "../../src/services/enrichment.service";
 import * as notificationEngine from "../../src/notifications/engine";
 import * as commitOps from "../../src/db/operations/commit.ops";
 import * as deliveryOps from "../../src/db/operations/delivery.ops";
 import { GitHubPushPayload, PushEventSummary } from "../../src/types/github.types";
-import { RepoConfigItem } from "../../src/types/dynamodb.types";
+import type { TenantRepoConfigItem } from "../../src/types/tenant.types";
 
-jest.mock("../../src/services/repository.service");
+jest.mock("../../src/webhooks/resolve-target");
 jest.mock("../../src/services/enrichment.service");
 jest.mock("../../src/notifications/engine");
 jest.mock("../../src/db/operations/commit.ops");
@@ -55,64 +55,68 @@ describe("handlePushEvent", () => {
     compare: "https://github.com/acme/syncro/compare/a...b",
   };
 
-  const mockRepoConfig: RepoConfigItem = {
+  const WS = "ws_11111111-1111-4111-8111-111111111111";
+  const mockRepo: TenantRepoConfigItem = {
     PK: "REPO#12345",
     SK: "CONFIG",
     github_repo_id: "12345",
     github_full_name: "acme/syncro",
     github_url: "https://github.com/acme/syncro",
-    discord_webhook_url: "https://discord.com/api/webhooks/123",
+    workspace_id: WS,
+    installation_id: "100",
     watched_branch: "main",
     is_active: true,
-    GSI1PK: "TYPE#REPO",
+    ownership_verified_at: "2026-10-15T00:00:00Z",
+    GSI1PK: `WS#${WS}#REPO`,
     created_at: "2026-10-15T00:00:00Z",
     updated_at: "2026-10-15T00:00:00Z",
+  };
+  const target = { repo: mockRepo };
+  const stamp = {
+    workspaceId: WS,
+    summary: { repo_full_name: "acme/syncro", event_type: "push", branch: "main", commit_count: 1, head_short_sha: "a81f23c" },
   };
 
   beforeEach(() => {
     jest.clearAllMocks();
   });
 
-  it("skips and marks ignored if repo is not registered or active", async () => {
-    jest.spyOn(repoService, "findActiveRepo").mockResolvedValueOnce(null);
+  it.each(["repo_not_found", "repo_not_tenant", "repo_inactive", "workspace_not_active", "installation_mismatch"] as const)(
+    "skips and marks ignored when the delivery does not resolve to an active workspace (%s)",
+    async (reason) => {
+      jest.spyOn(resolver, "resolveWebhookTarget").mockResolvedValueOnce({ ok: false, reason });
 
-    await handlePushEvent(basePayload, "deliv-1", 100);
+      await handlePushEvent(basePayload, "deliv-1", 100);
 
-    expect(deliveryOps.markDeliveryIgnored).toHaveBeenCalledWith(
-      "deliv-1",
-      expect.stringContaining("Repo not registered"),
-    );
-    expect(enrichmentService.enrichPushEvent).not.toHaveBeenCalled();
-  });
+      expect(resolver.resolveWebhookTarget).toHaveBeenCalledWith("12345", 100);
+      expect(deliveryOps.markDeliveryIgnored).toHaveBeenCalledWith("deliv-1", reason);
+      expect(enrichmentService.enrichPushEvent).not.toHaveBeenCalled();
+      expect(deliveryOps.markDeliveryProcessed).not.toHaveBeenCalled();
+    },
+  );
 
   it("skips and marks ignored if branch does not match watched branch", async () => {
-    jest.spyOn(repoService, "findActiveRepo").mockResolvedValueOnce(mockRepoConfig);
+    jest.spyOn(resolver, "resolveWebhookTarget").mockResolvedValueOnce({ ok: true, target });
     const featurePayload = { ...basePayload, ref: "refs/heads/feature/experiment" };
 
     await handlePushEvent(featurePayload, "deliv-2", 100);
 
-    expect(deliveryOps.markDeliveryIgnored).toHaveBeenCalledWith(
-      "deliv-2",
-      expect.stringContaining("Branch feature/experiment not watched"),
-    );
+    expect(deliveryOps.markDeliveryIgnored).toHaveBeenCalledWith("deliv-2", "branch_not_watched");
     expect(enrichmentService.enrichPushEvent).not.toHaveBeenCalled();
   });
 
   it("skips and marks ignored if branch was deleted or has 0 commits", async () => {
-    jest.spyOn(repoService, "findActiveRepo").mockResolvedValueOnce(mockRepoConfig);
+    jest.spyOn(resolver, "resolveWebhookTarget").mockResolvedValueOnce({ ok: true, target });
     const emptyPayload = { ...basePayload, commits: [] };
 
     await handlePushEvent(emptyPayload, "deliv-3", 100);
 
-    expect(deliveryOps.markDeliveryIgnored).toHaveBeenCalledWith(
-      "deliv-3",
-      expect.stringContaining("Branch deleted or no commits"),
-    );
+    expect(deliveryOps.markDeliveryIgnored).toHaveBeenCalledWith("deliv-3", "event_not_supported");
     expect(enrichmentService.enrichPushEvent).not.toHaveBeenCalled();
   });
 
-  it("executes the full pipeline: enrich, persist, notify, mark processed", async () => {
-    jest.spyOn(repoService, "findActiveRepo").mockResolvedValueOnce(mockRepoConfig);
+  it("executes the full pipeline: enrich, persist, notify, mark processed with the workspace stamp", async () => {
+    jest.spyOn(resolver, "resolveWebhookTarget").mockResolvedValueOnce({ ok: true, target });
     const mockSummary: PushEventSummary = {
       repoId: "12345",
       repoFullName: "acme/syncro",
@@ -141,15 +145,16 @@ describe("handlePushEvent", () => {
 
     expect(enrichmentService.enrichPushEvent).toHaveBeenCalledWith(basePayload, 100, "deliv-4", undefined);
     expect(commitOps.saveCommit).toHaveBeenCalledTimes(1);
-    expect(notificationEngine.dispatchPushNotification).toHaveBeenCalledWith(mockSummary, mockRepoConfig, undefined);
-    expect(deliveryOps.markDeliveryProcessed).toHaveBeenCalledWith("deliv-4");
+    expect(commitOps.saveCommit).toHaveBeenCalledWith("12345", "deliv-4", "main", mockSummary.commits[0], WS);
+    expect(notificationEngine.dispatchPushNotification).toHaveBeenCalledWith(mockSummary, target, undefined);
+    expect(deliveryOps.markDeliveryProcessed).toHaveBeenCalledWith("deliv-4", stamp);
   });
 
-  it("marks delivery failed and rethrows on failure", async () => {
-    jest.spyOn(repoService, "findActiveRepo").mockResolvedValueOnce(mockRepoConfig);
+  it("marks delivery failed (stamped) and rethrows on failure", async () => {
+    jest.spyOn(resolver, "resolveWebhookTarget").mockResolvedValueOnce({ ok: true, target });
     jest.spyOn(enrichmentService, "enrichPushEvent").mockRejectedValueOnce(new Error("GitHub API Error"));
 
     await expect(handlePushEvent(basePayload, "deliv-5", 100)).rejects.toThrow("GitHub API Error");
-    expect(deliveryOps.markDeliveryFailed).toHaveBeenCalledWith("deliv-5", "GitHub API Error");
+    expect(deliveryOps.markDeliveryFailed).toHaveBeenCalledWith("deliv-5", "GitHub API Error", stamp);
   });
 });
