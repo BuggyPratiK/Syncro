@@ -68,6 +68,8 @@ export const API_ERROR_STATUS = {
   repo_claimed: 409,
   /** The workspace already has the maximum number of active repositories. */
   repo_limit_reached: 409,
+  /** 422: the installation has more repositories than one listing can hold. */
+  listing_too_large: 422,
 
   // ── Destinations and stored secrets ────────────────────────────────────────
   /** The Discord webhook URL failed validation (the value is never echoed). */

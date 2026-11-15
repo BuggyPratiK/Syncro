@@ -73,6 +73,7 @@ describe("listing snapshots", () => {
     const error = await saveVerifiedListing(ctx, verifiedListing({ installationId: iid, githubUserId: gid, repos })).catch((e: unknown) => e);
     expect(error).toBeInstanceOf(ListingTooLargeError);
     expect((error as ListingTooLargeError).repoCount).toBe(MAX_LISTING_REPOS + 1);
+    expect(error).toMatchObject({ code: "listing_too_large", status: 422 });
     expect((await itemsWith("GHLISTING#")).filter((i) => i.workspace_id === ctx.workspaceId)).toHaveLength(0);
 
     // Exactly at the cap is fine and keeps every repository.

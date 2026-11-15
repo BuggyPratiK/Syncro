@@ -34,14 +34,17 @@ export const MAX_LISTING_REPOS = 1000;
 /**
  * The installation lists more repositories than one snapshot can hold. The
  * listing is never truncated or filtered (that would silently hide
- * repositories); nothing is stored and the request fails. Not a public error
- * code: the HTTP layer reports it as an internal error until a dedicated code
- * is added to the contract.
+ * repositories); nothing is stored and the request fails.
+ *
+ * It is a `ContractError` with the public code `listing_too_large` (HTTP 422),
+ * so the HTTP layer maps it like every other contract error, to
+ * `{ "error": "listing_too_large" }`. `repoCount` is for logs only and is not
+ * part of the public response.
  */
-export class ListingTooLargeError extends Error {
+export class ListingTooLargeError extends ContractError {
   readonly repoCount: number;
   constructor(repoCount: number) {
-    super(`Repository listing has ${repoCount} repositories; the maximum is ${MAX_LISTING_REPOS}`);
+    super("listing_too_large");
     this.name = "ListingTooLargeError";
     this.repoCount = repoCount;
   }

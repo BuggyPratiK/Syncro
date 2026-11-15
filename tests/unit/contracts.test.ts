@@ -157,6 +157,11 @@ describe("error codes", () => {
     expect(API_ERROR_STATUS.secret_store_busy).toBe(503);
   });
 
+  it("includes listing_too_large as 422", () => {
+    expect(API_ERROR_CODES).toContain("listing_too_large");
+    expect(API_ERROR_STATUS.listing_too_large).toBe(422);
+  });
+
   it("ContractError carries code and status only", () => {
     const e = new ContractError("installation_claimed");
     expect(e.code).toBe("installation_claimed");
