@@ -12,6 +12,8 @@ const config: Config = {
   moduleNameMapper: {
     "^@/(.*)$": "<rootDir>/src/$1",
     "^@octokit/app$": "<rootDir>/__mocks__/@octokit/app.ts",
+    // Tests never call real AWS SSM; see __mocks__/@aws-sdk/client-ssm.ts.
+    "^@aws-sdk/client-ssm$": "<rootDir>/__mocks__/@aws-sdk/client-ssm.ts",
   },
   collectCoverageFrom: ["src/**/*.ts", "!src/**/*.d.ts"],
   coverageDirectory: "coverage",
