@@ -19,6 +19,7 @@ import * as path from "path";
 import { ddb } from "../../src/db/client";
 import { ConditionalCheckFailedException } from "@aws-sdk/client-dynamodb";
 import { PutCommand, GetCommand, UpdateCommand, QueryCommand } from "@aws-sdk/lib-dynamodb";
+import { setParameterReaderForTests } from "../../src/config/secrets";
 
 jest.mock("../../src/db/client", () => ({
   ddb: {
@@ -28,6 +29,12 @@ jest.mock("../../src/db/client", () => ({
 
 const TEST_SECRET = "test-webhook-secret-xyz";
 
+// Fake SSM: the webhook secret used to sign requests, and a dummy App key
+// (the GitHub App client is mocked, so the key is never used for signing).
+setParameterReaderForTests(async (name) =>
+  name.endsWith("/sender/github-webhook-secret") ? TEST_SECRET : "dummy-private-key",
+);
+
 describe("Webhook Pipeline E2E Integration Tests", () => {
   // In-memory DynamoDB store: key = `${PK}##${SK}`
   const dbStore = new Map<string, any>();
@@ -35,6 +42,7 @@ describe("Webhook Pipeline E2E Integration Tests", () => {
 
   const mockContext: Context = {
     awsRequestId: "e2e-aws-request-id-999",
+    getRemainingTimeInMillis: () => 15_000, // same budget as the deployed function
   } as any;
 
   function storeKey(pk: string, sk: string): string {

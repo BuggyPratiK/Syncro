@@ -24,6 +24,9 @@ const mockPayload: NotificationPayload = {
   timestamp: "2026-10-15T00:00:00Z",
 };
 
+// Explicit target for every send: the provider has no global/default URL.
+const TARGET_URL = "https://discord.com/api/webhooks/123456789012345678/mock-token";
+
 describe("DiscordProvider", () => {
   const originalEnv = process.env;
   const originalFetch = global.fetch;
@@ -33,9 +36,6 @@ describe("DiscordProvider", () => {
       ...originalEnv,
       DYNAMODB_TABLE_NAME: "test-table",
       GITHUB_APP_ID: "123",
-      GITHUB_APP_PRIVATE_KEY: "dummy-key",
-      GITHUB_WEBHOOK_SECRET: "dummy-secret",
-      DISCORD_WEBHOOK_URL: "https://discord.com/api/webhooks/123456789012345678/mock-token",
     };
   });
 
@@ -51,7 +51,7 @@ describe("DiscordProvider", () => {
     } as any);
 
     const provider = new DiscordProvider();
-    const result = await provider.send(mockPayload);
+    const result = await provider.send(mockPayload, TARGET_URL);
 
     expect(result.success).toBe(true);
     expect(result.channel).toBe("discord");
@@ -85,7 +85,7 @@ describe("DiscordProvider", () => {
       .mockResolvedValueOnce(successResponse as any);
 
     const provider = new DiscordProvider();
-    const result = await provider.send(mockPayload);
+    const result = await provider.send(mockPayload, TARGET_URL);
 
     expect(result.success).toBe(true);
     expect(result.channel).toBe("discord");
@@ -103,7 +103,7 @@ describe("DiscordProvider", () => {
     } as any);
 
     const provider = new DiscordProvider();
-    const result = await provider.send(mockPayload);
+    const result = await provider.send(mockPayload, TARGET_URL);
 
     expect(result.success).toBe(false);
     expect(result.channel).toBe("discord");
@@ -118,7 +118,7 @@ describe("DiscordProvider", () => {
     } as any);
 
     const provider = new DiscordProvider();
-    const result = await provider.send(mockPayload);
+    const result = await provider.send(mockPayload, TARGET_URL);
 
     expect(result.success).toBe(false);
     expect(result.channel).toBe("discord");
@@ -153,7 +153,7 @@ describe("DiscordProvider", () => {
       .mockResolvedValueOnce(success200 as any);
 
     const provider = new DiscordProvider({ initialDelayMs: 10 });
-    const result = await provider.send(mockPayload);
+    const result = await provider.send(mockPayload, TARGET_URL);
 
     expect(result.success).toBe(true);
     expect(result.retried).toBe(true);
@@ -177,7 +177,7 @@ describe("DiscordProvider", () => {
       .mockResolvedValueOnce({ ok: true, status: 204 } as any);
 
     const provider = new DiscordProvider({ initialDelayMs: 10 });
-    const result = await provider.send(mockPayload);
+    const result = await provider.send(mockPayload, TARGET_URL);
 
     expect(result.success).toBe(true);
     expect(result.retried).toBe(true);
@@ -200,7 +200,7 @@ describe("DiscordProvider", () => {
     global.fetch = jest.fn().mockResolvedValue(rateLimitResponse as any);
 
     const provider = new DiscordProvider({ maxRetryDelayMs: 2000 });
-    const result = await provider.send(mockPayload);
+    const result = await provider.send(mockPayload, TARGET_URL);
 
     expect(result.success).toBe(false);
     expect(result.statusCode).toBe(429);
@@ -225,7 +225,7 @@ describe("DiscordProvider", () => {
     const provider = new DiscordProvider({
       getRemainingTimeMs: () => 3000,
     });
-    const result = await provider.send(mockPayload);
+    const result = await provider.send(mockPayload, TARGET_URL);
 
     expect(result.success).toBe(false);
     expect(result.statusCode).toBe(429);
@@ -239,7 +239,7 @@ describe("DiscordProvider", () => {
     );
 
     const provider = new DiscordProvider({ maxRetries: 0 });
-    const result = await provider.send(mockPayload);
+    const result = await provider.send(mockPayload, TARGET_URL);
 
     expect(result.success).toBe(false);
     expect(result.error).toContain("https://discord.com/api/webhooks/1234567890/[REDACTED]");
@@ -286,7 +286,7 @@ describe("DiscordProvider", () => {
     };
 
     const provider = new DiscordProvider();
-    const result = await provider.send(prPayload);
+    const result = await provider.send(prPayload, TARGET_URL);
 
     expect(result.success).toBe(true);
     expect(capturedBody).toContain("PR #99 opened - acme/syncro");

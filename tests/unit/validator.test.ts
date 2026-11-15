@@ -1,6 +1,7 @@
 import { createHmac } from "crypto";
 import { verifyGitHubSignature } from "../../src/utils/crypto";
 import { validateWebhookSignature } from "../../src/webhooks/validator";
+import { setParameterReaderForTests } from "../../src/config/secrets";
 import { APIGatewayProxyEvent } from "aws-lambda";
 
 describe("verifyGitHubSignature", () => {
@@ -46,10 +47,11 @@ describe("validateWebhookSignature", () => {
       ...originalEnv,
       DYNAMODB_TABLE_NAME: "test-table",
       GITHUB_APP_ID: "123",
-      GITHUB_APP_PRIVATE_KEY: "dummy-key",
-      GITHUB_WEBHOOK_SECRET: SECRET,
-      DISCORD_WEBHOOK_URL: "https://discord.com/api/webhooks/test",
     };
+    // Fake SSM: the webhook secret comes from Parameter Store, never the environment.
+    setParameterReaderForTests(async (name) =>
+      name.endsWith("/sender/github-webhook-secret") ? SECRET : "dummy-private-key",
+    );
   });
 
   afterAll(() => {
@@ -78,42 +80,42 @@ describe("validateWebhookSignature", () => {
     };
   }
 
-  it("returns valid = false when signature header is missing", () => {
+  it("returns valid = false when signature header is missing", async () => {
     const event = createMockEvent({}, "{}");
-    const result = validateWebhookSignature(event);
+    const result = await validateWebhookSignature(event);
     expect(result.valid).toBe(false);
     expect(result.error).toBe("Missing X-Hub-Signature-256 header");
   });
 
-  it("returns valid = true for correctly signed request", () => {
+  it("returns valid = true for correctly signed request", async () => {
     const body = '{"action":"created"}';
     const sig = makeSig(body);
     const event = createMockEvent({ "x-hub-signature-256": sig }, body);
-    const result = validateWebhookSignature(event);
+    const result = await validateWebhookSignature(event);
     expect(result.valid).toBe(true);
     expect(result.rawBody).toBe(body);
   });
 
-  it("handles uppercase X-Hub-Signature-256 header", () => {
+  it("handles uppercase X-Hub-Signature-256 header", async () => {
     const body = '{"action":"created"}';
     const sig = makeSig(body);
     const event = createMockEvent({ "X-Hub-Signature-256": sig }, body);
-    const result = validateWebhookSignature(event);
+    const result = await validateWebhookSignature(event);
     expect(result.valid).toBe(true);
   });
 
-  it("returns valid = false when signature is invalid", () => {
+  it("returns valid = false when signature is invalid", async () => {
     const event = createMockEvent({ "x-hub-signature-256": "sha256=invalid" }, '{"action":"test"}');
-    const result = validateWebhookSignature(event);
+    const result = await validateWebhookSignature(event);
     expect(result.valid).toBe(false);
     expect(result.error).toBe("Invalid webhook signature");
   });
 
-  it("decodes base64-encoded request bodies before validation", () => {
+  it("decodes base64-encoded request bodies before validation", async () => {
     const body = '{"ref":"refs/heads/main"}';
     const sig = makeSig(body);
     const event = createMockEvent({ "x-hub-signature-256": sig }, body, true);
-    const result = validateWebhookSignature(event);
+    const result = await validateWebhookSignature(event);
     expect(result.valid).toBe(true);
     expect(result.rawBody).toBe(body);
   });

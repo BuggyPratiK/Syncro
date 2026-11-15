@@ -139,9 +139,9 @@ describe("handlePushEvent", () => {
 
     await handlePushEvent(basePayload, "deliv-4", 100);
 
-    expect(enrichmentService.enrichPushEvent).toHaveBeenCalledWith(basePayload, 100, "deliv-4");
+    expect(enrichmentService.enrichPushEvent).toHaveBeenCalledWith(basePayload, 100, "deliv-4", undefined);
     expect(commitOps.saveCommit).toHaveBeenCalledTimes(1);
-    expect(notificationEngine.dispatchPushNotification).toHaveBeenCalledWith(mockSummary, mockRepoConfig);
+    expect(notificationEngine.dispatchPushNotification).toHaveBeenCalledWith(mockSummary, mockRepoConfig, undefined);
     expect(deliveryOps.markDeliveryProcessed).toHaveBeenCalledWith("deliv-4");
   });
 

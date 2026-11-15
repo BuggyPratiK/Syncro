@@ -23,7 +23,7 @@ describe("notification.ops", () => {
 
     const notifId = await createNotificationRecord("repo-1", "deliv-1", "discord", "webhook-42");
 
-    expect(notifId).toBe("deliv-1#discord#webhook-42");
+    expect(notifId).toEqual({ notificationId: "deliv-1#discord#webhook-42", alreadySent: false });
     expect(ddb.send).toHaveBeenCalledTimes(1);
     const callArgs = (ddb.send as jest.Mock).mock.calls[0][0];
     expect(callArgs.input.Item.PK).toBe("REPO#repo-1");
@@ -48,7 +48,7 @@ describe("notification.ops", () => {
 
     const notifId = await createNotificationRecord("repo-1", "deliv-1", "discord", "webhook-42");
 
-    expect(notifId).toBe("deliv-1#discord#webhook-42");
+    expect(notifId).toEqual({ notificationId: "deliv-1#discord#webhook-42", alreadySent: false });
     expect(ddb.send).toHaveBeenCalledTimes(2);
 
     const updateCall = (ddb.send as jest.Mock).mock.calls[1][0];
@@ -70,7 +70,7 @@ describe("notification.ops", () => {
 
     const notifId = await createNotificationRecord("repo-1", "deliv-1", "discord");
 
-    expect(notifId).toBe("deliv-1#discord");
+    expect(notifId).toEqual({ notificationId: "deliv-1#discord", alreadySent: true });
     expect(ddb.send).toHaveBeenCalledTimes(2);
   });
 
@@ -100,6 +100,15 @@ describe("notification.ops", () => {
     expect(callArgs.input.ExpressionAttributeValues[":error"]).toBe("Rate limit exceeded");
     expect(callArgs.input.ExpressionAttributeValues[":retries"]).toBe(2);
     expect(callArgs.input.ExpressionAttributeValues[":failedAt"]).toBeDefined();
+  });
+
+  it("markNotificationFailed masks secrets and caps the stored error", async () => {
+    (ddb.send as jest.Mock).mockResolvedValueOnce({});
+    const error = `Network error: https://discord.com/api/webhooks/42/tok-secret ${"y".repeat(3000)}`;
+    await markNotificationFailed("repo-1", "deliv-1#discord", error);
+    const stored = (ddb.send as jest.Mock).mock.calls[0][0].input.ExpressionAttributeValues[":error"];
+    expect(stored).not.toContain("tok-secret");
+    expect(stored.length).toBeLessThanOrEqual(500);
   });
 
   it("getNotificationRecord retrieves record by repoId and notificationId", async () => {

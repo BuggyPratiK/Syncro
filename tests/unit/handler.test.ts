@@ -3,6 +3,7 @@ import { APIGatewayProxyEvent, Context } from "aws-lambda";
 import * as validator from "../../src/webhooks/validator";
 import * as deliveryOps from "../../src/db/operations/delivery.ops";
 import * as router from "../../src/webhooks/router";
+import { SecretUnavailableError } from "../../src/config/secrets";
 
 jest.mock("../../src/webhooks/validator");
 jest.mock("../../src/db/operations/delivery.ops");
@@ -59,8 +60,21 @@ describe("Lambda handler", () => {
   });
 
   describe("POST /webhooks/github", () => {
+    it("fails closed with 500 and processes nothing when the webhook secret is unavailable", async () => {
+      jest
+        .spyOn(validator, "validateWebhookSignature")
+        .mockRejectedValueOnce(new SecretUnavailableError("/syncro/prod/sender/github-webhook-secret", "access_denied"));
+
+      const event = createEvent({ httpMethod: "POST", path: "/webhooks/github", body: "{}" });
+      const result = await handler(event, mockContext);
+
+      expect(result.statusCode).toBe(500);
+      expect(deliveryOps.claimDelivery).not.toHaveBeenCalled();
+      expect(router.routeWebhookEvent).not.toHaveBeenCalled();
+    });
+
     it("returns 401 when signature validation fails", async () => {
-      jest.spyOn(validator, "validateWebhookSignature").mockReturnValueOnce({
+      jest.spyOn(validator, "validateWebhookSignature").mockResolvedValueOnce({
         valid: false,
         rawBody: "",
         error: "Invalid signature",
@@ -78,7 +92,7 @@ describe("Lambda handler", () => {
     });
 
     it("returns 400 when payload is not valid JSON", async () => {
-      jest.spyOn(validator, "validateWebhookSignature").mockReturnValueOnce({
+      jest.spyOn(validator, "validateWebhookSignature").mockResolvedValueOnce({
         valid: true,
         rawBody: "invalid-json{",
       });
@@ -95,7 +109,7 @@ describe("Lambda handler", () => {
     });
 
     it("returns 400 when X-GitHub-Delivery header is missing", async () => {
-      jest.spyOn(validator, "validateWebhookSignature").mockReturnValueOnce({
+      jest.spyOn(validator, "validateWebhookSignature").mockResolvedValueOnce({
         valid: true,
         rawBody: '{"action":"test"}',
       });
@@ -113,7 +127,7 @@ describe("Lambda handler", () => {
     });
 
     it("returns 200 with 'Already processed' when delivery is duplicate", async () => {
-      jest.spyOn(validator, "validateWebhookSignature").mockReturnValueOnce({
+      jest.spyOn(validator, "validateWebhookSignature").mockResolvedValueOnce({
         valid: true,
         rawBody: '{"repository":{"id":123}}',
       });
@@ -136,7 +150,7 @@ describe("Lambda handler", () => {
     });
 
     it("returns 200 with 'Event received but not handled' for unhandled event types", async () => {
-      jest.spyOn(validator, "validateWebhookSignature").mockReturnValueOnce({
+      jest.spyOn(validator, "validateWebhookSignature").mockResolvedValueOnce({
         valid: true,
         rawBody: '{"zen":"Responsive is better than fast."}',
       });
@@ -166,7 +180,7 @@ describe("Lambda handler", () => {
     });
 
     it("returns 200 with 'OK' when push event is processed successfully", async () => {
-      jest.spyOn(validator, "validateWebhookSignature").mockReturnValueOnce({
+      jest.spyOn(validator, "validateWebhookSignature").mockResolvedValueOnce({
         valid: true,
         rawBody: '{"repository":{"id":123}}',
       });
@@ -192,7 +206,7 @@ describe("Lambda handler", () => {
     });
 
     it("returns 500 when event processing throws an unexpected error", async () => {
-      jest.spyOn(validator, "validateWebhookSignature").mockReturnValueOnce({
+      jest.spyOn(validator, "validateWebhookSignature").mockResolvedValueOnce({
         valid: true,
         rawBody: '{"repository":{"id":123}}',
       });

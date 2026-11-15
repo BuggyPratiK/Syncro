@@ -80,7 +80,10 @@ describe("notification engine", () => {
   beforeEach(() => {
     jest.clearAllMocks();
     mockSend.mockReset();
-    jest.spyOn(notifOps, "createNotificationRecord").mockResolvedValue("2026-10-15T00:00:00.000Z");
+    jest.spyOn(notifOps, "createNotificationRecord").mockResolvedValue({
+      notificationId: "2026-10-15T00:00:00.000Z",
+      alreadySent: false,
+    });
     jest.spyOn(notifOps, "markNotificationSent").mockResolvedValue(undefined);
     jest.spyOn(notifOps, "markNotificationFailed").mockResolvedValue(undefined);
     jest.spyOn(destOps, "getDiscordDestination").mockResolvedValue(mockDestination);
@@ -105,6 +108,7 @@ describe("notification engine", () => {
     expect(mockSend).toHaveBeenCalledWith(
       expect.objectContaining({ type: "push" }),
       mockDestination.discord_webhook_url,
+      { deadline: undefined },
     );
     expect(notifOps.markNotificationSent).toHaveBeenCalled();
   });
@@ -130,25 +134,47 @@ describe("notification engine", () => {
     expect(mockSend).not.toHaveBeenCalled();
   });
 
-  it("falls back to legacy discord_webhook_url when discord_destination_id is not set", async () => {
+  it("never falls back to a webhook URL stored on the repository record", async () => {
+    // Behaviour change: the old repo-level URL fallback is removed. A repo
+    // without a destination reference gets zero targets, even if it still
+    // carries a legacy URL attribute.
     const legacyConfig: RepoConfigItem = {
       ...mockRepoConfig,
       discord_destination_id: undefined,
       discord_webhook_url: "https://discord.com/api/webhooks/999/legacy-token",
     };
 
-    mockSend.mockResolvedValueOnce({
-      success: true,
-      channel: "discord",
-      messageId: "legacy-msg",
-    });
-
     await dispatchPushNotification(mockSummary, legacyConfig);
 
     expect(destOps.getDiscordDestination).not.toHaveBeenCalled();
+    expect(notifOps.createNotificationRecord).not.toHaveBeenCalled();
+    expect(mockSend).not.toHaveBeenCalled();
+  });
+
+  it("does not re-send a notification already delivered by an earlier attempt", async () => {
+    jest.spyOn(notifOps, "createNotificationRecord").mockResolvedValueOnce({
+      notificationId: "2026-10-15T00:00:00.000Z",
+      alreadySent: true,
+    });
+
+    await dispatchPushNotification(mockSummary, mockRepoConfig);
+
+    expect(notifOps.createNotificationRecord).toHaveBeenCalledTimes(1);
+    expect(mockSend).not.toHaveBeenCalled();
+    expect(notifOps.markNotificationSent).not.toHaveBeenCalled();
+    expect(notifOps.markNotificationFailed).not.toHaveBeenCalled();
+  });
+
+  it("passes the invocation deadline to the provider", async () => {
+    mockSend.mockResolvedValueOnce({ success: true, channel: "discord" });
+    const deadline = { remainingMs: () => 9_000 };
+
+    await dispatchPushNotification(mockSummary, mockRepoConfig, deadline);
+
     expect(mockSend).toHaveBeenCalledWith(
-      expect.anything(),
-      "https://discord.com/api/webhooks/999/legacy-token",
+      expect.objectContaining({ type: "push" }),
+      mockDestination.discord_webhook_url,
+      { deadline },
     );
   });
 
@@ -261,6 +287,7 @@ describe("notification engine", () => {
           pullRequest: expect.objectContaining({ number: 88 }),
         }),
         mockDestination.discord_webhook_url,
+        { deadline: undefined },
       );
       expect(notifOps.markNotificationSent).toHaveBeenCalled();
     });

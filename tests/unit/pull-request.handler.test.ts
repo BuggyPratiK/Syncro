@@ -155,6 +155,7 @@ describe("handlePullRequestEvent", () => {
       basePrPayload,
       mockRepoConfig,
       "deliv-pr-4",
+      undefined,
     );
     expect(deliveryOps.markDeliveryProcessed).toHaveBeenCalledWith("deliv-pr-4");
   });

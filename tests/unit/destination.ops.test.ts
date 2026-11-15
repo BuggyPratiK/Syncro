@@ -24,9 +24,6 @@ describe("destination.ops", () => {
       ...originalEnv,
       DYNAMODB_TABLE_NAME: "test-syncro-table",
       GITHUB_APP_ID: "123",
-      GITHUB_APP_PRIVATE_KEY: "dummy-key",
-      GITHUB_WEBHOOK_SECRET: "dummy-secret",
-      DISCORD_WEBHOOK_URL: VALID_WEBHOOK,
     };
   });
 
