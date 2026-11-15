@@ -23,8 +23,28 @@ import type { CommitItem, DeliveryItem, NotificationItem } from "../../types/dyn
 import type { DeliverySummaryAttribute } from "../../types/tenant.types";
 import { sanitizeErrorForStorage } from "../../utils/redact";
 
-/** Commit partitions grow over time; reading children scans at most this many pages. */
-const MAX_COMMIT_PAGES = 5;
+/**
+ * Commits are stored per repository (not per delivery), so finding one
+ * delivery's commits scans the repository's commit partition. The scan is
+ * bounded: at most `maxPages` pages of `pageSize` items. If items remain after
+ * that, the read fails closed with `DeliveryChildrenIncompleteError` rather
+ * than returning a partial list.
+ */
+const commitScan = { pageSize: 500, maxPages: 5 };
+
+/** Test hook: shrink the commit scan bounds (undefined restores the defaults). */
+export function setCommitScanLimitsForTests(limits: { pageSize: number; maxPages: number } | undefined): void {
+  commitScan.pageSize = limits?.pageSize ?? 500;
+  commitScan.maxPages = limits?.maxPages ?? 5;
+}
+
+/** The delivery's commits could not all be read within the scan bound; nothing partial is returned. */
+export class DeliveryChildrenIncompleteError extends Error {
+  constructor() {
+    super("Delivery children exceed the commit scan limit");
+    this.name = "DeliveryChildrenIncompleteError";
+  }
+}
 
 function deliveryIdOf(item: { PK: string }): string {
   return item.PK.slice("DELIVERY#".length);
@@ -106,6 +126,7 @@ export interface DeliveryChildren {
 /**
  * Notifications and commits of one delivery, or `null` when the delivery is
  * not stamped for the caller's workspace. Internal: no public route or DTO yet.
+ * Throws `DeliveryChildrenIncompleteError` instead of returning a partial list.
  */
 export async function getDeliveryChildren(ctx: WorkspaceContext, deliveryId: string): Promise<DeliveryChildren | null> {
   if (typeof deliveryId !== "string" || !/^[A-Za-z0-9-]{1,64}$/.test(deliveryId)) return null;
@@ -136,13 +157,15 @@ export async function getDeliveryChildren(ctx: WorkspaceContext, deliveryId: str
 
   const commits: DeliveryChildren["commits"] = [];
   let startKey: Record<string, unknown> | undefined;
-  for (let pageNo = 0; pageNo < MAX_COMMIT_PAGES; pageNo++) {
+  for (let pageNo = 0; ; pageNo++) {
+    if (pageNo >= commitScan.maxPages) throw new DeliveryChildrenIncompleteError();
     const page = await ddb.send(
       new QueryCommand({
         TableName: tableName(),
         KeyConditionExpression: "PK = :pk AND begins_with(SK, :prefix)",
         FilterExpression: "delivery_id = :d AND workspace_id = :ws",
         ExpressionAttributeValues: { ":pk": repoPk, ":prefix": "COMMIT#", ":d": deliveryId, ":ws": ctx.workspaceId },
+        Limit: commitScan.pageSize,
         ExclusiveStartKey: startKey,
       }),
     );
