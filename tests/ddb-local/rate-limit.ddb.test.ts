@@ -5,7 +5,9 @@
 
 import { consumeRateLimit } from "../../src/ratelimit/rate-limit";
 import { RATE_LIMITS } from "../../src/contracts";
-import { itemsWith, useTestTable } from "./harness";
+import { PutCommand } from "@aws-sdk/lib-dynamodb";
+import { ddb } from "../../src/db/client";
+import { itemsWith, tableName, useTestTable } from "./harness";
 
 useTestTable();
 
@@ -46,6 +48,20 @@ describe("consumeRateLimit under concurrency", () => {
     await burst(uid, "github", RATE_LIMITS.github + 5);
     const writes = await burst(uid, "write", 5);
     expect(writes.every((r) => r.allowed)).toBe(true);
+  });
+
+  it("enforcement does not depend on DynamoDB TTL deletion", async () => {
+    // A full counter for the current window whose ttl is already in the past
+    // (TTL deletion is lazy): the limit still applies, keyed by the window.
+    const uid = "logto:ttluser00001";
+    await ddb.send(
+      new PutCommand({
+        TableName: tableName(),
+        Item: { PK: `RATE#${uid}`, SK: `write#${WINDOW}`, bucket: "write", count: RATE_LIMITS.write, ttl: 1 },
+      }),
+    );
+    const [decision] = await burst(uid, "write", 1);
+    expect(decision.allowed).toBe(false);
   });
 
   it("a new window starts from zero", async () => {
