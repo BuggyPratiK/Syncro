@@ -22,11 +22,9 @@
         "cdk:diff": "cdk diff",
         "cdk:deploy": "cdk deploy --require-approval never",
         "cdk:destroy": "cdk destroy",
-        "local:start": "sam local start-api --env-vars .env.local.json --port 3000",
         "local:dynamo": "docker run --rm -p 8000:8000 amazon/dynamodb-local:3.3.2@sha256:6ada631ec7aa5fc83446855eb17233e3dad184fec47477e8140c6c569cfe0c86",
         "signup:mode": "ts-node scripts/set-signup-mode.ts",
-        "format": "prettier --write \"src/**/*.ts\" \"infra/**/*.ts\"",
-        "setup:secrets": "ts-node scripts/setup-aws-secrets.ts"
+        "format": "prettier --write \"src/**/*.ts\" \"infra/**/*.ts\""
     },
     "dependencies": {
         "@aws-sdk/client-dynamodb": "^3.682.0",
@@ -46,7 +44,6 @@
         "aws-cdk": "^2.1146.1",
         "aws-cdk-lib": "^2.164.1",
         "constructs": "^10.4.2",
-        "dotenv": "^18.0.8",
         "esbuild": "^0.24.0",
         "eslint": "^9.13.0",
         "jest": "^29.7.0",
