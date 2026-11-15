@@ -71,7 +71,7 @@ export function verifiedInstallation(o: {
     proof: o.accountType === "Organization" ? "org_admin" : "personal_owner",
     verifiedVia: "user_oauth",
     verifiedAt: o.verifiedAt ?? new Date().toISOString(),
-  } as VerifiedInstallation;
+  } as unknown as VerifiedInstallation; // test-only: production values come from GitHub verification
 }
 
 export function verifiedListing(o: {
@@ -85,7 +85,7 @@ export function verifiedListing(o: {
     githubUserId: o.githubUserId,
     repos: o.repos.map((r) => ({ repoId: r.repoId, fullName: r.fullName ?? `octo/repo-${r.repoId}`, admin: r.admin ?? true })),
     verifiedAt: o.verifiedAt ?? new Date().toISOString(),
-  } as VerifiedRepositoryListing;
+  } as unknown as VerifiedRepositoryListing; // test-only: production values come from GitHub verification
 }
 
 export interface FakeWriter extends DestinationSecretWriter {
