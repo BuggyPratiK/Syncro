@@ -93,6 +93,16 @@ describe("listing snapshots", () => {
     expect(await code(updateRepo(member, "8001", { watchedBranch: "x" }))).toBe("forbidden");
   });
 
+  it("refuses a listing with a malformed repository name or ID, storing nothing", async () => {
+    const { ctx, gid, iid } = await setup();
+    for (const repo of [{ repoId: "9101", fullName: "no-slash" }, { repoId: "9102", fullName: "a/b c" }, { repoId: "0", fullName: "a/b" }]) {
+      await expect(saveVerifiedListing(ctx, verifiedListing({ installationId: iid, githubUserId: gid, repos: [repo] }))).rejects.toThrow(
+        "Malformed repository in listing",
+      );
+    }
+    expect((await itemsWith("GHLISTING#")).filter((i) => i.workspace_id === ctx.workspaceId)).toHaveLength(0);
+  });
+
   it("an expired snapshot is not returned", async () => {
     const { ctx, listing } = await setup();
     const snap = await listing([{ repoId: "201" }]);
@@ -252,6 +262,8 @@ describe("repository isolation", () => {
     for (const id of ["6001", "6002", "6003"]) await registerRepo(a.ctx, { listingId: snap.listingId, repoId: id });
 
     expect(await getRepo(b.ctx, "6001")).toBeNull();
+    expect(await getRepo(a.ctx, "not-a-number")).toBeNull();
+    expect(await getRepo(a.ctx, "")).toBeNull();
     expect(await code(updateRepo(b.ctx, "6001", { watchedBranch: "x" }))).toBe("not_found");
     expect((await listRepos(b.ctx, { limit: 50 })).items).toHaveLength(0);
 

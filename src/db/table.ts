@@ -6,7 +6,6 @@
  * to accidentally produce malformed keys inline.
  */
 
-import { createHash } from "crypto";
 import { getBaseEnv } from "../config/env";
 import { assertId } from "../contracts/ids";
 import { RATE_LIMIT_BUCKETS, type RateLimitBucket } from "../contracts/constants";
@@ -18,18 +17,6 @@ export function tableName(): string {
 // ─── Key Builders ────────────────────────────────────────────────────────────
 
 export const keys = {
-  /** Repository config item */
-  repoConfig: (githubRepoId: string | number) => ({
-    PK: `REPO#${githubRepoId}`,
-    SK: "CONFIG" as const,
-  }),
-
-  /** Discord destination item */
-  destination: (destinationId: string) => ({
-    PK: `DESTINATION#${destinationId}`,
-    SK: "CONFIG" as const,
-  }),
-
   /** Delivery dedup item */
   delivery: (deliveryId: string) => ({
     PK: `DELIVERY#${deliveryId}`,
@@ -65,29 +52,6 @@ export function buildNotificationId(
     ? `${deliveryId}#${sanitizedChannel}#${destinationId}`
     : `${deliveryId}#${sanitizedChannel}`;
 }
-
-/**
- * Extracts a safe destination identifier (e.g. Discord webhook ID or SHA-256 hash).
- * NEVER includes secret webhook tokens.
- */
-export function extractDestinationId(targetUrl?: string): string | undefined {
-  if (!targetUrl) return undefined;
-  const discordMatch = targetUrl.match(/discord(?:app)?\.com\/api\/webhooks\/(\d+)/i);
-  if (discordMatch) {
-    return discordMatch[1];
-  }
-  return createHash("sha256").update(targetUrl).digest("hex").slice(0, 10);
-}
-
-// ─── GSI Keys ────────────────────────────────────────────────────────────────
-
-export const gsiKeys = {
-  /** GSI1PK for listing all repositories */
-  allRepos: () => "TYPE#REPO" as const,
-
-  /** GSI1PK for listing all destinations */
-  allDestinations: () => "TYPE#DESTINATION" as const,
-};
 
 // ─── Tenant Keys ─────────────────────────────────────────────────────────────
 //
