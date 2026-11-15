@@ -33,6 +33,7 @@ export async function createNotificationRecord(
   deliveryId: string,
   channel: string,
   destinationId?: string,
+  workspaceId?: string,
 ): Promise<NotificationRecordHandle> {
   const notificationId = buildNotificationId(deliveryId, channel, destinationId);
   const now = new Date().toISOString();
@@ -43,6 +44,7 @@ export async function createNotificationRecord(
     delivery_id: deliveryId,
     channel,
     ...(destinationId ? { destination_id: destinationId } : {}),
+    ...(workspaceId ? { workspace_id: workspaceId } : {}),
     status: "pending",
     created_at: now,
     retry_count: 0,
