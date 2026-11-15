@@ -3,6 +3,8 @@
  * These define the structure of items stored in the syncro table.
  */
 
+import type { DeliverySummaryAttribute } from "./tenant.types";
+
 export type NotificationProviderChannel = "discord" | "telegram" | "slack";
 
 /** Discord Destination item — PK=DESTINATION#<destination_id>, SK=CONFIG */
@@ -74,6 +76,12 @@ export interface DeliveryItem {
   attempt_count?: number; // Total number of processing attempts
   last_attempt_at?: string; // ISO 8601 UTC
   ttl: number; // Unix epoch — auto-deleted after 30 days
+  // Workspace history fields: set only when a delivery for a workspace-owned repo
+  // is marked processed or failed. Ignored deliveries never get them.
+  workspace_id?: string;
+  GSI1PK?: string; // WS#<ws>#DELIVERY
+  created_at?: string; // if_not_exists(created_at, received_at) — type-index sort key
+  summary?: DeliverySummaryAttribute;
 }
 
 /** Commit record item — PK=REPO#<id>, SK=COMMIT#<sha> */
@@ -93,6 +101,7 @@ export interface CommitItem {
   changed_files: string[];
   github_url: string;
   committed_at: string; // ISO 8601 UTC
+  workspace_id?: string; // Owning workspace, set when the record is created
 }
 
 /** Notification log item — PK=REPO#<id>, SK=NOTIF#<delivery_id>#<channel>[#<dest_id>] */
@@ -110,6 +119,7 @@ export interface NotificationItem {
   failed_at?: string; // ISO 8601 UTC — when delivery failed
   error_message?: string;
   updated_at?: string; // ISO 8601 UTC — last update or retry
+  workspace_id?: string; // Owning workspace, set when the record is created
 }
 
 // ─── Input Types for Operations ──────────────────────────────────────────────
