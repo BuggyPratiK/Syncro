@@ -2,12 +2,13 @@
 
 on:
   push:
-    branches: [main]
+    branches: [main, feature/dashboard]
   pull_request:
     branches: [main]
 
 jobs:
   ci:
+    # This job name is a required status check on main; keep it unchanged.
     name: Lint, Type-Check, Test
     runs-on: ubuntu-latest
     steps:
@@ -29,19 +30,46 @@ jobs:
       - name: Type check
         run: npm run type-check
 
+      # Tests use only dummy, non-secret configuration (tests/setup.ts); secrets
+      # are never needed because SSM and GitHub are faked.
       - name: Run tests
         run: npm test -- --coverage
-        env:
-          AWS_REGION: ap-south-1
-          DYNAMODB_TABLE_NAME: syncro
-          DYNAMODB_ENDPOINT: http://localhost:8000
-          GITHUB_APP_ID: "123456"
-          GITHUB_APP_PRIVATE_KEY: "test-key"
-          GITHUB_WEBHOOK_SECRET: test-secret
-          DISCORD_WEBHOOK_URL: https://discord.com/api/webhooks/test/test
+
+      - name: Deploy env allowlist check
+        run: npx ts-node scripts/check-deploy-env-allowlist.ts
 
       - name: CDK Synth (validate IaC)
         run: npm run cdk:synth
         env:
           CDK_DEFAULT_ACCOUNT: "123456789012"
-          CDK_DEFAULT_REGION: ap-south-1
+          CDK_DEFAULT_REGION: ap-southeast-2
+          AWS_REGION: ap-southeast-2
+          GITHUB_APP_ID: "123456"
+
+  ddb-local:
+    name: DynamoDB Local tests
+    runs-on: ubuntu-latest
+    services:
+      dynamodb:
+        # Pinned by tag and digest.
+        image: amazon/dynamodb-local:3.3.2@sha256:6ada631ec7aa5fc83446855eb17233e3dad184fec47477e8140c6c569cfe0c86
+        ports:
+          - 8000:8000
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "24.21.0"
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      # Dummy credentials only; the suite refuses any non-local endpoint.
+      - name: Run DynamoDB Local tests
+        run: npm run test:ddb
+        env:
+          DDB_LOCAL_ENDPOINT: http://localhost:8000
