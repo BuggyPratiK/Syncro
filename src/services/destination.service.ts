@@ -36,6 +36,16 @@ export function toSafeDestinationDto(item: DiscordDestinationItem): SafeDiscordD
 }
 
 /**
+ * The single place where the send path reads the webhook URL of a global
+ * (pre-workspace) destination item. Kept separate so the notification engine
+ * never touches a webhook-URL attribute directly; removed together with these
+ * global destination items when per-workspace destinations replace them.
+ */
+export function legacyDestinationWebhookUrl(item: DiscordDestinationItem): string {
+  return item.discord_webhook_url;
+}
+
+/**
  * Creates a Discord destination and returns a safe DTO.
  */
 export async function createDestinationService(

@@ -2,6 +2,10 @@
  * Notification Engine.
  * Dispatches notifications to configured providers for a given push event.
  * Provider selection is driven by repository config from DynamoDB.
+ *
+ * Targets come only from the repository's configured destination. There is no
+ * fallback (no global URL and no URL stored on the repository record): a repo
+ * without an active destination gets zero targets and nothing is sent.
  */
 
 import { PushEventSummary, GitHubPullRequestPayload } from "../types/github.types";
@@ -14,8 +18,9 @@ import {
   markNotificationFailed,
 } from "../db/operations/notification.ops";
 import { getDiscordDestination } from "../db/operations/destination.ops";
-import { extractDestinationId } from "../db/table";
+import { legacyDestinationWebhookUrl } from "../services/destination.service";
 import { logger } from "../utils/logger";
+import type { Deadline } from "../utils/deadline";
 
 // Instantiate providers once per Lambda cold start (reused across warm invocations)
 const discordProvider = new DiscordProvider();
@@ -44,6 +49,7 @@ function buildPayload(summary: PushEventSummary): NotificationPayload {
     changedFiles: summary.commits.flatMap((c) => c.allChangedFiles),
     compareUrl: summary.compareUrl,
     timestamp: new Date().toISOString(),
+    commitsWithStats: summary.commitsWithStats,
   };
 }
 
@@ -92,9 +98,8 @@ interface ResolvedTarget {
 }
 
 /**
- * Resolves notification targets for a given repository.
- * Resolves normalized destination references (discord_destination_id) first,
- * and falls back to legacy direct webhook URLs for backward compatibility.
+ * Resolves notification targets for a given repository from its
+ * `discord_destination_id`. Missing or inactive destination: no target.
  */
 async function resolveNotificationTargets(
   repoConfig: RepoConfigItem,
@@ -118,17 +123,10 @@ async function resolveNotificationTargets(
     } else {
       targets.push({
         provider: discordProvider,
-        targetUrl: destination.discord_webhook_url,
+        targetUrl: legacyDestinationWebhookUrl(destination),
         destinationId: destination.destination_id,
       });
     }
-  } else if (repoConfig.discord_webhook_url) {
-    // 2. Backward compatibility fallback: repository item still has discord_webhook_url
-    targets.push({
-      provider: discordProvider,
-      targetUrl: repoConfig.discord_webhook_url,
-      destinationId: extractDestinationId(repoConfig.discord_webhook_url),
-    });
   }
 
   // Future providers (Phase 2 & Phase 3):
@@ -146,6 +144,7 @@ async function dispatchToProviders(
   deliveryId: string,
   payload: NotificationPayload,
   repoConfig: RepoConfigItem,
+  deadline?: Deadline,
 ): Promise<void> {
   const targets = await resolveNotificationTargets(repoConfig);
 
@@ -158,15 +157,25 @@ async function dispatchToProviders(
 
   // Send to all configured targets sequentially
   for (const target of targets) {
-    const notificationId = await createNotificationRecord(
+    const { notificationId, alreadySent } = await createNotificationRecord(
       repoId,
       deliveryId,
       target.provider.channel,
       target.destinationId,
     );
 
+    // A retry of the same GitHub delivery must not post the same message twice.
+    if (alreadySent) {
+      logger.info("Notification already sent by an earlier attempt, skipping", {
+        channel: target.provider.channel,
+        repo: payload.repoFullName,
+        destinationId: target.destinationId,
+      });
+      continue;
+    }
+
     try {
-      const result = await target.provider.send(payload, target.targetUrl);
+      const result = await target.provider.send(payload, target.targetUrl, { deadline });
 
       if (result.success) {
         await markNotificationSent(repoId, notificationId, result.messageId);
@@ -211,9 +220,10 @@ async function dispatchToProviders(
 export async function dispatchPushNotification(
   summary: PushEventSummary,
   repoConfig: RepoConfigItem,
+  deadline?: Deadline,
 ): Promise<void> {
   const payload = buildPayload(summary);
-  await dispatchToProviders(summary.repoId, summary.deliveryId, payload, repoConfig);
+  await dispatchToProviders(summary.repoId, summary.deliveryId, payload, repoConfig, deadline);
 }
 
 /**
@@ -223,8 +233,9 @@ export async function dispatchPullRequestNotification(
   payload: GitHubPullRequestPayload,
   repoConfig: RepoConfigItem,
   deliveryId: string,
+  deadline?: Deadline,
 ): Promise<void> {
   const notifPayload = buildPrPayload(payload);
   const repoId = String(payload.repository.id);
-  await dispatchToProviders(repoId, deliveryId, notifPayload, repoConfig);
+  await dispatchToProviders(repoId, deliveryId, notifPayload, repoConfig, deadline);
 }

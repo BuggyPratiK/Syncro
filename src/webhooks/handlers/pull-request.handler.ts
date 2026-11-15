@@ -13,12 +13,14 @@ import {
   markDeliveryIgnored,
 } from "../../db/operations/delivery.ops";
 import { logger } from "../../utils/logger";
+import type { Deadline } from "../../utils/deadline";
 
 const RELEVANT_PR_ACTIONS = new Set(["opened", "closed", "reopened"]);
 
 export async function handlePullRequestEvent(
   payload: GitHubPullRequestPayload,
   deliveryId: string,
+  deadline?: Deadline,
 ): Promise<void> {
   const repoId = String(payload.repository.id);
   const baseBranch = payload.pull_request?.base?.ref;
@@ -57,7 +59,7 @@ export async function handlePullRequestEvent(
 
   try {
     // Dispatch notifications to all configured channels
-    await dispatchPullRequestNotification(payload, repoConfig, deliveryId);
+    await dispatchPullRequestNotification(payload, repoConfig, deliveryId, deadline);
 
     await markDeliveryProcessed(deliveryId);
 

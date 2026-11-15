@@ -2,6 +2,8 @@
  * Notification Provider Contract
  */
 
+import type { Deadline } from "../utils/deadline";
+
 export type NotificationChannel = "discord" | "telegram" | "slack" | "whatsapp";
 
 export interface PullRequestNotificationDetails {
@@ -38,6 +40,8 @@ export interface NotificationPayload {
   compareUrl: string;
   timestamp: string;
   pullRequest?: PullRequestNotificationDetails;
+  /** Push only: commits whose line stats are included in the totals (when fewer than all). */
+  commitsWithStats?: number;
 }
 
 export interface NotificationResult {
@@ -50,7 +54,16 @@ export interface NotificationResult {
   statusCode?: number;
 }
 
+export interface SendOptions {
+  /** Remaining invocation time; each attempt's timeout is sized from it. */
+  deadline?: Deadline;
+}
+
 export interface NotificationProvider {
   readonly channel: NotificationChannel;
-  send(payload: NotificationPayload, targetUrl?: string): Promise<NotificationResult>;
+  /**
+   * Sends to an explicit target only. There is no global or default target:
+   * without a valid target URL nothing is sent.
+   */
+  send(payload: NotificationPayload, targetUrl: string, options?: SendOptions): Promise<NotificationResult>;
 }

@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Discord embed template for GitHub push events.
  *
  * Builds a rich Discord embed object. Discord-specific formatting
@@ -50,6 +50,12 @@ export function buildPushEmbed(payload: NotificationPayload): DiscordEmbed {
     (remainingFiles > 0 ? `\n*...and ${remainingFiles} more*` : "") ||
     "*No files changed*";
 
+  // Line stats may cover only some commits (enrichment cap, timeout or API error).
+  const statsNote =
+    payload.commitsWithStats !== undefined && payload.commitsWithStats < payload.commits.length
+      ? ` (line stats for ${payload.commitsWithStats} of ${payload.commits.length} commits)`
+      : "";
+
   // Pull command
   const pullCommand = `\`\`\`bash\ngit pull origin ${payload.branch}\n\`\`\``;
 
@@ -57,7 +63,7 @@ export function buildPushEmbed(payload: NotificationPayload): DiscordEmbed {
     title: `🚀 ${payload.branch.toUpperCase()} updated - ${payload.repoFullName}`,
     description:
       `**${payload.commits.length} commit${payload.commits.length !== 1 ? "s" : ""}** pushed by **${payload.pusherName}** ` +
-      `• ${formatDiff(payload.totalAdditions, payload.totalDeletions)} • ${payload.totalFilesChanged} file${payload.totalFilesChanged !== 1 ? "s" : ""} changed`,
+      `• ${formatDiff(payload.totalAdditions, payload.totalDeletions)} • ${payload.totalFilesChanged} file${payload.totalFilesChanged !== 1 ? "s" : ""} changed${statsNote}`,
     color,
     fields: [
       {

@@ -16,6 +16,8 @@ import {
   markDeliveryFailed,
 } from "./db/operations/delivery.ops";
 import { logger } from "./utils/logger";
+import { deadlineFromContext, type Deadline } from "./utils/deadline";
+import { SecretUnavailableError } from "./config/secrets";
 
 // ─── Response Helpers ─────────────────────────────────────────────────────────
 
@@ -50,7 +52,7 @@ export async function handler(
 
   //------- Webhook endpoint -----------
   if (method === "POST" && path === "/webhooks/github") {
-    return handleGitHubWebhook(event, requestId);
+    return handleGitHubWebhook(event, requestId, deadlineFromContext(context));
   }
 
   return response(404, { error: "Not found" }, requestId);
@@ -59,9 +61,21 @@ export async function handler(
 async function handleGitHubWebhook(
   event: APIGatewayProxyEvent,
   requestId: string,
+  deadline: Deadline | undefined,
 ): Promise<APIGatewayProxyResult> {
-  //Validate signature BEFORE any processing
-  const validation = validateWebhookSignature(event);
+  // Validate signature BEFORE any processing. The webhook secret is read from
+  // SSM; if it is unavailable, fail closed with 500 so GitHub records a failed
+  // delivery and nothing is parsed or processed.
+  let validation;
+  try {
+    validation = await validateWebhookSignature(event);
+  } catch (error) {
+    if (error instanceof SecretUnavailableError) {
+      logger.error("Webhook secret unavailable, rejecting delivery", { reason: error.reason, requestId });
+      return response(500, { error: "Internal server error" }, requestId);
+    }
+    throw error;
+  }
   if (!validation.valid) {
     logger.warn("Webhook signature validation failed", { error: validation.error, requestId });
     return response(401, { error: "Unauthorized" }, requestId);
@@ -97,7 +111,7 @@ async function handleGitHubWebhook(
 
   //Route to appropriate handler
   try {
-    const result = await routeWebhookEvent(event, payload, deliveryId);
+    const result = await routeWebhookEvent(event, payload, deliveryId, deadline);
 
     if (!result.handled) {
       logger.debug("Event not handled", { eventType: result.eventType, requestId });

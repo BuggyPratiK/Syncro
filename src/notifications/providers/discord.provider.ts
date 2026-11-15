@@ -4,14 +4,23 @@
  *
  * Uses Discord REST API directly — no Gateway/WebSocket connection needed.
  * This works perfectly inside a stateless Lambda function.
+ *
+ * There is no default or global webhook URL: the caller must pass the target
+ * resolved for the repository, and without one nothing is sent.
+ *
+ * Each attempt is aborted after `RELAY.discordAttemptTimeoutMs`, or earlier if
+ * the invocation deadline (minus a safety reserve) comes first. No attempt is
+ * started once that budget is used up.
  */
 
 import {
   NotificationProvider,
   NotificationPayload,
   NotificationResult,
+  SendOptions,
 } from "../../types/notification.types";
-import { getEnv } from "../../config/env";
+import { RELAY } from "../../contracts/constants";
+import { attemptTimeoutMs, type Deadline } from "../../utils/deadline";
 import { logger, maskWebhookUrl } from "../../utils/logger";
 import { validateDiscordWebhookUrl } from "../../utils/url-validator";
 import { buildPushEmbed } from "../templates/push.template";
@@ -45,8 +54,12 @@ export class DiscordProvider implements NotificationProvider {
     };
   }
 
-  async send(payload: NotificationPayload, targetUrl?: string): Promise<NotificationResult> {
-    const webhookUrl = targetUrl !== undefined ? targetUrl : getEnv().DISCORD_WEBHOOK_URL;
+  async send(
+    payload: NotificationPayload,
+    targetUrl: string,
+    options?: SendOptions,
+  ): Promise<NotificationResult> {
+    const webhookUrl = targetUrl;
     if (!webhookUrl) {
       return {
         success: false,
@@ -78,13 +91,31 @@ export class DiscordProvider implements NotificationProvider {
     let lastError = "Unknown error";
     let lastStatusCode: number | undefined;
 
+    // A per-send deadline wins over the constructor's remaining-time callback.
+    const getRemainingTimeMs = this.config.getRemainingTimeMs;
+    const deadline: Deadline | undefined =
+      options?.deadline ?? (getRemainingTimeMs ? { remainingMs: getRemainingTimeMs } : undefined);
+    const remainingMs = (): number | undefined => deadline?.remainingMs();
+
     for (let attempt = 0; attempt <= this.config.maxRetries; attempt++) {
+      const timeoutMs = attemptTimeoutMs(
+        deadline,
+        RELAY.discordAttemptTimeoutMs,
+        RELAY.deadlineSafetyReserveMs,
+      );
+      if (timeoutMs === 0) {
+        lastError = "Insufficient execution time for Discord request";
+        logger.warn("Skipping Discord attempt — execution budget exhausted", { attempt });
+        break;
+      }
+
       try {
         const response = await fetch(validWebhookUrl, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ embeds: [embed] }),
           redirect: "error", // Prevent SSRF attacks via HTTP redirects
+          signal: AbortSignal.timeout(timeoutMs),
         });
 
         if (response.ok || response.status === 204) {
@@ -154,9 +185,9 @@ export class DiscordProvider implements NotificationProvider {
           }
 
           // Check remaining execution budget if available
-          if (this.config.getRemainingTimeMs) {
-            const remaining = this.config.getRemainingTimeMs();
-            if (retryAfterMs > remaining - 2000) {
+          const remaining = remainingMs();
+          if (remaining !== undefined) {
+            if (retryAfterMs > remaining - RELAY.deadlineSafetyReserveMs) {
               logger.warn("Discord rate-limit delay exceeds remaining execution budget", {
                 retryAfterMs,
                 remainingTimeMs: remaining,
@@ -193,7 +224,8 @@ export class DiscordProvider implements NotificationProvider {
             this.config.maxRetryDelayMs,
           );
 
-          if (this.config.getRemainingTimeMs && delayMs > this.config.getRemainingTimeMs() - 2000) {
+          const remainingForRetry = remainingMs();
+          if (remainingForRetry !== undefined && delayMs > remainingForRetry - RELAY.deadlineSafetyReserveMs) {
             logger.warn("Insufficient execution budget for 5xx retry", { delayMs, attempt });
             break;
           }
@@ -207,8 +239,15 @@ export class DiscordProvider implements NotificationProvider {
           continue;
         }
       } catch (networkError) {
-        // Network error (e.g. ECONNRESET, ETIMEDOUT, DNS failure)
-        const errMsg = networkError instanceof Error ? networkError.message : String(networkError);
+        // Network error (e.g. ECONNRESET, ETIMEDOUT, DNS failure) or the attempt timeout firing
+        const isTimeout =
+          networkError instanceof Error &&
+          (networkError.name === "TimeoutError" || networkError.name === "AbortError");
+        const errMsg = isTimeout
+          ? `Discord request timed out after ${timeoutMs}ms`
+          : networkError instanceof Error
+            ? networkError.message
+            : String(networkError);
         const sanitizedErrMsg = maskWebhookUrl(errMsg);
         lastError = `Network error: ${sanitizedErrMsg}`;
 
@@ -221,7 +260,8 @@ export class DiscordProvider implements NotificationProvider {
           this.config.maxRetryDelayMs,
         );
 
-        if (this.config.getRemainingTimeMs && delayMs > this.config.getRemainingTimeMs() - 2000) {
+        const remainingForRetry = remainingMs();
+        if (remainingForRetry !== undefined && delayMs > remainingForRetry - RELAY.deadlineSafetyReserveMs) {
           logger.warn("Insufficient execution budget for network retry", { delayMs, attempt });
           break;
         }

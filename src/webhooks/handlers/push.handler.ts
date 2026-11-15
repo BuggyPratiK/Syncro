@@ -15,11 +15,13 @@ import {
 } from "../../db/operations/delivery.ops";
 import { branchFromRef } from "../../utils/format";
 import { logger } from "../../utils/logger";
+import type { Deadline } from "../../utils/deadline";
 
 export async function handlePushEvent(
   payload: GitHubPushPayload,
   deliveryId: string,
   installationId: number,
+  deadline?: Deadline,
 ): Promise<void> {
   const repoId = String(payload.repository.id);
   const branch = branchFromRef(payload.ref);
@@ -56,7 +58,7 @@ export async function handlePushEvent(
 
   try {
     // Enrich commit data from GitHub API
-    const summary = await enrichPushEvent(payload, installationId, deliveryId);
+    const summary = await enrichPushEvent(payload, installationId, deliveryId, deadline);
 
     // Persist all commits to DynamoDB
     await Promise.all(
@@ -66,7 +68,7 @@ export async function handlePushEvent(
     );
 
     // Dispatch notifications to all configured channels
-    await dispatchPushNotification(summary, repoConfig);
+    await dispatchPushNotification(summary, repoConfig, deadline);
 
     await markDeliveryProcessed(deliveryId);
 

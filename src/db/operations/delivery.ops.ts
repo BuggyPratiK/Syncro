@@ -8,6 +8,7 @@ import { ddb } from "../client";
 import { tableName, keys } from "../table";
 import { DeliveryItem } from "../../types/dynamodb.types";
 import { ttlInDays } from "../../utils/format";
+import { sanitizeErrorForStorage } from "../../utils/redact";
 
 /**
  * Default lease duration for active webhook processing: 60 seconds.
@@ -102,6 +103,7 @@ export async function markDeliveryProcessed(deliveryId: string): Promise<void> {
 
 /**
  * Marks a delivery as failed, recording the error reason so it can be recovered or audited.
+ * The reason is masked for secrets and capped in length before it is stored.
  */
 export async function markDeliveryFailed(
   deliveryId: string,
@@ -118,7 +120,7 @@ export async function markDeliveryFailed(
       ExpressionAttributeValues: {
         ":status": "failed",
         ":processedAt": new Date().toISOString(),
-        ":error": reason,
+        ":error": sanitizeErrorForStorage(reason),
       },
     }),
   );
@@ -144,7 +146,7 @@ export async function markDeliveryIgnored(
       ExpressionAttributeValues: {
         ":status": "ignored",
         ":processedAt": new Date().toISOString(),
-        ...(reason ? { ":reason": reason } : {}),
+        ...(reason ? { ":reason": sanitizeErrorForStorage(reason) } : {}),
       },
     }),
   );
