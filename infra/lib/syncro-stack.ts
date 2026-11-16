@@ -2,19 +2,56 @@
  * Syncro CDK Stack
  * Defines all AWS infrastructure: DynamoDB, Lambda, API Gateway, IAM.
  * Uses NodejsFunction with esbuild for self-contained dependency bundling.
+ *
+ * Secrets never pass through CDK: the Lambda environment holds only
+ * non-secret values and the NAMES of SSM SecureString parameters. The
+ * function reads the parameters at runtime (encrypted with the AWS-managed
+ * `aws/ssm` key; no customer-managed KMS key exists).
  */
 
 import * as cdk from "aws-cdk-lib";
 import * as dynamodb from "aws-cdk-lib/aws-dynamodb";
+import * as iam from "aws-cdk-lib/aws-iam";
 import * as lambda from "aws-cdk-lib/aws-lambda";
 import * as lambdaNodejs from "aws-cdk-lib/aws-lambda-nodejs";
 import * as apigateway from "aws-cdk-lib/aws-apigateway";
 import * as logs from "aws-cdk-lib/aws-logs";
 import { Construct } from "constructs";
 
+/** SSM parameter namespace for production secrets. */
+export const SSM_PARAM_PREFIX = "/syncro/prod";
+
+/** Secrets read by the webhook sender (created by the operator out of band). */
+export const SENDER_PARAMS = {
+  githubAppPrivateKey: `${SSM_PARAM_PREFIX}/sender/github-app-private-key`,
+  githubWebhookSecret: `${SSM_PARAM_PREFIX}/sender/github-webhook-secret`,
+} as const;
+
+/** Per-destination Discord webhook URLs, one parameter per workspace destination. */
+export const DESTINATION_PARAM_PATTERN = `${SSM_PARAM_PREFIX}/ws/*/dest/*/discord-webhook-url`;
+
+export interface SyncroStackProps extends cdk.StackProps {
+  /** The Syncro GitHub App's numeric ID (not a secret). */
+  githubAppId: string;
+  logLevel?: "debug" | "info" | "warn" | "error";
+  /** Changing this value replaces running containers so they re-read secrets after a rotation. */
+  secretsEpoch?: string;
+}
+
 export class SyncroStack extends cdk.Stack {
-  constructor(scope: Construct, id: string, props?: cdk.StackProps) {
+  /** The single table, exposed so a later dashboard construct can be granted access to it. */
+  public readonly table: dynamodb.Table;
+
+  constructor(scope: Construct, id: string, props: SyncroStackProps) {
     super(scope, id, props);
+
+    // Fail the synth loudly rather than deploy a function that cannot start.
+    if (!/^[1-9][0-9]{0,18}$/.test(props.githubAppId)) {
+      throw new Error("SyncroStack: githubAppId must be the numeric GitHub App ID (set GITHUB_APP_ID)");
+    }
+    if (props.secretsEpoch !== undefined && !/^[A-Za-z0-9._:-]{1,64}$/.test(props.secretsEpoch)) {
+      throw new Error("SyncroStack: secretsEpoch may only contain letters, digits and . _ : -");
+    }
 
     // DynamoDB Table
     const table = new dynamodb.Table(this, "SyncroTable", {
@@ -25,7 +62,9 @@ export class SyncroStack extends cdk.Stack {
       timeToLiveAttribute: "ttl",
       encryption: dynamodb.TableEncryption.AWS_MANAGED, // Explicit server-side encryption at rest
       removalPolicy: cdk.RemovalPolicy.RETAIN, // Never delete table on stack destroy
+      deletionProtection: true, // The table cannot be deleted, even by a stack change, until this is turned off
     });
+    this.table = table;
 
     // GSI for listing all repositories by type
     table.addGlobalSecondaryIndex({
@@ -42,7 +81,9 @@ export class SyncroStack extends cdk.Stack {
       removalPolicy: cdk.RemovalPolicy.DESTROY,
     });
 
-    // Lambda Function with full dependency bundling via esbuild
+    // Lambda Function with full dependency bundling via esbuild.
+    // Environment: non-secret values only (validated at cold start by the
+    // webhook env schema); secrets are referenced by SSM parameter name.
     const fn = new lambdaNodejs.NodejsFunction(this, "SyncroHandler", {
       functionName: "syncro-webhook-handler",
       runtime: lambda.Runtime.NODEJS_24_X,
@@ -57,19 +98,42 @@ export class SyncroStack extends cdk.Stack {
         target: "node24",
       },
       environment: {
-        NODE_ENV: "production",
-        LOG_LEVEL: process.env.LOG_LEVEL || "info",
+        LOG_LEVEL: props.logLevel ?? "info",
         DYNAMODB_TABLE_NAME: table.tableName,
-        AWS_NODEJS_CONNECTION_REUSE_ENABLED: "1", // Reuse HTTP connections to AWS APIs
-        GITHUB_APP_ID: process.env.GITHUB_APP_ID || "",
-        GITHUB_APP_PRIVATE_KEY: process.env.GITHUB_APP_PRIVATE_KEY || "",
-        GITHUB_WEBHOOK_SECRET: process.env.GITHUB_WEBHOOK_SECRET || "",
-        DISCORD_WEBHOOK_URL: process.env.DISCORD_WEBHOOK_URL || "",
+        GITHUB_APP_ID: props.githubAppId,
+        SSM_PARAM_PREFIX,
+        GITHUB_APP_PRIVATE_KEY_PARAM: SENDER_PARAMS.githubAppPrivateKey,
+        GITHUB_WEBHOOK_SECRET_PARAM: SENDER_PARAMS.githubWebhookSecret,
+        ...(props.secretsEpoch ? { SECRETS_EPOCH: props.secretsEpoch } : {}),
       },
     });
 
     // Grant Lambda read/write access to DynamoDB table
     table.grantReadWriteData(fn);
+
+    // SSM: read-only, and only the sender's two secrets plus destination URLs.
+    // No ssm:PutParameter: this function can never write a secret.
+    // No KMS statement: the AWS-managed `aws/ssm` key's policy already allows
+    // decryption through Parameter Store for principals in this account that
+    // may call SSM, so access is governed entirely by ssm:GetParameter here.
+    const parameterArn = (name: string) =>
+      this.formatArn({
+        service: "ssm",
+        resource: "parameter",
+        resourceName: name.replace(/^\//, ""),
+      });
+    fn.addToRolePolicy(
+      new iam.PolicyStatement({
+        sid: "ReadSenderAndDestinationSecrets",
+        effect: iam.Effect.ALLOW,
+        actions: ["ssm:GetParameter"],
+        resources: [
+          parameterArn(SENDER_PARAMS.githubAppPrivateKey),
+          parameterArn(SENDER_PARAMS.githubWebhookSecret),
+          parameterArn(DESTINATION_PARAM_PATTERN),
+        ],
+      }),
+    );
 
     // API Gateway
     const api = new apigateway.RestApi(this, "SyncroApi", {

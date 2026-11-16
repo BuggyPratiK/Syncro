@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Data Enrichment Service.
  * Orchestrates fetching full commit details from the GitHub API
  * and building a complete PushEventSummary for notification templates.
@@ -8,6 +8,7 @@ import { GitHubPushPayload, PushEventSummary } from "../types/github.types";
 import { enrichCommits } from "./github.service";
 import { branchFromRef, shortSha } from "../utils/format";
 import { logger } from "../utils/logger";
+import type { Deadline } from "../utils/deadline";
 
 /**
  * Enriches a GitHub push payload with full diff stats from the GitHub API
@@ -17,6 +18,7 @@ export async function enrichPushEvent(
   payload: GitHubPushPayload,
   installationId: number,
   deliveryId: string,
+  deadline?: Deadline,
 ): Promise<PushEventSummary> {
   const owner = payload.repository.owner.login;
   const repo = payload.repository.name;
@@ -30,7 +32,7 @@ export async function enrichPushEvent(
 
   // Only enrich the distinct commits (GitHub marks force-pushed non-distinct commits)
   const distinctCommits = payload.commits.filter((c) => c.distinct);
-  const enriched = await enrichCommits(installationId, owner, repo, distinctCommits);
+  const enriched = await enrichCommits(installationId, owner, repo, distinctCommits, deadline);
 
   const totalAdditions = enriched.reduce((sum, c) => sum + c.additions, 0);
   const totalDeletions = enriched.reduce((sum, c) => sum + c.deletions, 0);
@@ -53,5 +55,7 @@ export async function enrichPushEvent(
     totalFilesChanged: allFiles.length,
     compareUrl: payload.compare,
     deliveryId,
+    // Totals only cover commits whose stats came from the API (see enrichment cap).
+    commitsWithStats: enriched.filter((c) => c.statsFromApi !== false).length,
   };
 }

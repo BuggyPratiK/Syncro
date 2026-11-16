@@ -8,6 +8,7 @@ import { APIGatewayProxyEvent } from "aws-lambda";
 import { handlePushEvent, handlePullRequestEvent } from "./handlers";
 import { GitHubPushPayload, GitHubPullRequestPayload } from "../types/github.types";
 import { logger } from "../utils/logger";
+import type { Deadline } from "../utils/deadline";
 
 export type SupportedEvent = "push" | "pull_request";
 const SUPPORTED_EVENTS: SupportedEvent[] = ["push", "pull_request"];
@@ -21,6 +22,7 @@ export async function routeWebhookEvent(
   event: APIGatewayProxyEvent,
   parsedPayload: unknown,
   deliveryId: string,
+  deadline?: Deadline,
 ): Promise<RouterResult> {
   const eventType = event.headers["x-github-event"] ?? event.headers["X-GitHub-Event"];
 
@@ -47,6 +49,7 @@ export async function routeWebhookEvent(
         parsedPayload as GitHubPushPayload,
         deliveryId,
         installationId ?? 0,
+        deadline,
       );
       return { handled: true, eventType };
 
@@ -54,6 +57,8 @@ export async function routeWebhookEvent(
       await handlePullRequestEvent(
         parsedPayload as GitHubPullRequestPayload,
         deliveryId,
+        installationId,
+        deadline,
       );
       return { handled: true, eventType };
 

@@ -8,6 +8,33 @@ import { ddb } from "../client";
 import { tableName, keys } from "../table";
 import { DeliveryItem } from "../../types/dynamodb.types";
 import { ttlInDays } from "../../utils/format";
+import { sanitizeErrorForStorage } from "../../utils/redact";
+import { tenantGsiKeys } from "../table";
+import type { DeliverySummaryAttribute } from "../../types/tenant.types";
+
+/**
+ * Records a delivery in a workspace's history. Set only when a delivery for a
+ * workspace-owned repository is marked processed or failed; ignored
+ * deliveries are never stamped.
+ */
+export interface DeliveryStamp {
+  workspaceId: string;
+  summary: DeliverySummaryAttribute;
+}
+
+/**
+ * Update fragments that stamp a delivery. The condition only enforces
+ * workspace consistency (a delivery can never move to another workspace's
+ * history); it is not a status transition check.
+ */
+function stampParts(stamp: DeliveryStamp | undefined) {
+  if (!stamp) return { set: "", condition: undefined, values: {} };
+  return {
+    set: ", workspace_id = :ws, GSI1PK = :gsi, created_at = if_not_exists(created_at, received_at), summary = :summary",
+    condition: "attribute_exists(PK) AND (attribute_not_exists(workspace_id) OR workspace_id = :ws)",
+    values: { ":ws": stamp.workspaceId, ":gsi": tenantGsiKeys.deliveries(stamp.workspaceId), ":summary": stamp.summary },
+  };
+}
 
 /**
  * Default lease duration for active webhook processing: 60 seconds.
@@ -84,17 +111,20 @@ export async function claimDelivery(
 /**
  * Marks a delivery as successfully processed.
  */
-export async function markDeliveryProcessed(deliveryId: string): Promise<void> {
+export async function markDeliveryProcessed(deliveryId: string, stamp?: DeliveryStamp): Promise<void> {
   const itemKeys = keys.delivery(deliveryId);
+  const s = stampParts(stamp);
   await ddb.send(
     new UpdateCommand({
       TableName: tableName(),
       Key: itemKeys,
-      UpdateExpression: "SET #status = :status, processed_at = :processedAt",
+      UpdateExpression: "SET #status = :status, processed_at = :processedAt" + s.set,
+      ...(s.condition ? { ConditionExpression: s.condition } : {}),
       ExpressionAttributeNames: { "#status": "status" },
       ExpressionAttributeValues: {
         ":status": "processed",
         ":processedAt": new Date().toISOString(),
+        ...s.values,
       },
     }),
   );
@@ -102,23 +132,28 @@ export async function markDeliveryProcessed(deliveryId: string): Promise<void> {
 
 /**
  * Marks a delivery as failed, recording the error reason so it can be recovered or audited.
+ * The reason is masked for secrets and capped in length before it is stored.
  */
 export async function markDeliveryFailed(
   deliveryId: string,
   reason: string,
+  stamp?: DeliveryStamp,
 ): Promise<void> {
   const itemKeys = keys.delivery(deliveryId);
+  const s = stampParts(stamp);
   await ddb.send(
     new UpdateCommand({
       TableName: tableName(),
       Key: itemKeys,
       UpdateExpression:
-        "SET #status = :status, processed_at = :processedAt, error_message = :error",
+        "SET #status = :status, processed_at = :processedAt, error_message = :error" + s.set,
+      ...(s.condition ? { ConditionExpression: s.condition } : {}),
       ExpressionAttributeNames: { "#status": "status" },
       ExpressionAttributeValues: {
         ":status": "failed",
         ":processedAt": new Date().toISOString(),
-        ":error": reason,
+        ":error": sanitizeErrorForStorage(reason),
+        ...s.values,
       },
     }),
   );
@@ -144,7 +179,7 @@ export async function markDeliveryIgnored(
       ExpressionAttributeValues: {
         ":status": "ignored",
         ":processedAt": new Date().toISOString(),
-        ...(reason ? { ":reason": reason } : {}),
+        ...(reason ? { ":reason": sanitizeErrorForStorage(reason) } : {}),
       },
     }),
   );

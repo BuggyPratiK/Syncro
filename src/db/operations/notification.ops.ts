@@ -7,10 +7,21 @@ import { ConditionalCheckFailedException } from "@aws-sdk/client-dynamodb";
 import { ddb } from "../client";
 import { tableName, keys, buildNotificationId } from "../table";
 import { NotificationItem } from "../../types/dynamodb.types";
+import { sanitizeErrorForStorage } from "../../utils/redact";
+
+export interface NotificationRecordHandle {
+  notificationId: string;
+  /**
+   * True when this notification was already delivered by an earlier attempt of
+   * the same GitHub delivery. The caller must NOT send it again.
+   */
+  alreadySent: boolean;
+}
 
 /**
  * Creates or idempotently initializes a notification record with a deterministic identity.
- * Returns the notificationId (the deterministic sort key component).
+ * Returns the notificationId (the deterministic sort key component) and whether
+ * the notification was already sent, so a retried delivery never posts twice.
  *
  * Uses conditional write to guarantee atomic, collision-free record creation.
  * If record already exists (e.g. on a delivery retry):
@@ -22,7 +33,8 @@ export async function createNotificationRecord(
   deliveryId: string,
   channel: string,
   destinationId?: string,
-): Promise<string> {
+  workspaceId?: string,
+): Promise<NotificationRecordHandle> {
   const notificationId = buildNotificationId(deliveryId, channel, destinationId);
   const now = new Date().toISOString();
   const itemKeys = keys.notification(githubRepoId, notificationId);
@@ -32,6 +44,7 @@ export async function createNotificationRecord(
     delivery_id: deliveryId,
     channel,
     ...(destinationId ? { destination_id: destinationId } : {}),
+    ...(workspaceId ? { workspace_id: workspaceId } : {}),
     status: "pending",
     created_at: now,
     retry_count: 0,
@@ -45,7 +58,7 @@ export async function createNotificationRecord(
         ConditionExpression: "attribute_not_exists(PK)",
       }),
     );
-    return notificationId;
+    return { notificationId, alreadySent: false };
   } catch (error) {
     if (error instanceof ConditionalCheckFailedException) {
       // Record already exists for this deterministic key (retry or re-attempt).
@@ -70,11 +83,11 @@ export async function createNotificationRecord(
       } catch (updateError) {
         if (updateError instanceof ConditionalCheckFailedException) {
           // Already sent — preserve successful sent status idempotently
-          return notificationId;
+          return { notificationId, alreadySent: true };
         }
         throw updateError;
       }
-      return notificationId;
+      return { notificationId, alreadySent: false };
     }
     throw error;
   }
@@ -108,7 +121,8 @@ export async function markNotificationSent(
 }
 
 /**
- * Marks a notification as failed.
+ * Marks a notification as failed. The stored error text is masked for secrets
+ * and capped in length; it is never rejected for being long.
  */
 export async function markNotificationFailed(
   githubRepoId: string,
@@ -129,7 +143,7 @@ export async function markNotificationFailed(
         ":status": "failed",
         ":failedAt": now,
         ":updatedAt": now,
-        ":error": errorMessage,
+        ":error": sanitizeErrorForStorage(errorMessage),
         ...(retryCount !== undefined ? { ":retries": retryCount } : {}),
       },
     }),

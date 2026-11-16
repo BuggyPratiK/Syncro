@@ -30,7 +30,7 @@ flowchart TD
 
     subgraph AWS["AWS Serverless Architecture (Always-Free Tier)"]
         APIGW["🚪 Amazon API Gateway<br/>/v1/webhooks/github"]
-        LAMBDA["⚡ AWS Lambda<br/>Node.js 22 + TypeScript"]
+        LAMBDA["⚡ AWS Lambda<br/>Node.js 24 + TypeScript"]
         DDB[("🗄️ Amazon DynamoDB<br/>Single-Table Design")]
 
         subgraph Execution["Pipeline Flow"]
@@ -39,7 +39,7 @@ flowchart TD
             ROUTER{"3. Event Router"}
             ENRICH["4a. Push Handler<br/>Fetch commit diff stats"]
             PR_FILTER["4b. PR Handler<br/>Lifecycle filter: opened / closed / reopened"]
-            DISPATCH["5. Dispatch Engine<br/>Repo-specific webhook resolution"]
+            DISPATCH["5. Dispatch Engine<br/>Workspace destination resolution"]
         end
     end
 
@@ -69,13 +69,14 @@ flowchart TD
 
 - **Permanent Always-Free Tier**: Powered by AWS Lambda (1M free requests/month forever) and Amazon DynamoDB (25 GB storage + 25 WCU/RCU forever). Runs at **$0/month indefinitely**.
 - **High-Signal Push & PR Lifecycle Tracking**: Real-time rich embeds for commits and Pull Request events (`opened`, `reopened`, `closed/merged`) with dynamic base-branch contributor sync commands (`git pull origin <branch>`), diff statistics, and direct review links. Noisy events (synchronize, labels) are filtered to prevent channel spam.
-- **Per-Repository Webhook Routing**: Supports multi-tenant delivery where each monitored repository dispatches to its own dedicated Discord webhook URL configured in DynamoDB.
+- **Multi-Tenant Workspaces**: Each repository belongs to a workspace and notifies only that workspace's Discord destination. A delivery for a repository that is not workspace-owned is ignored; nothing falls back to a global URL.
+- **Secrets in SSM Parameter Store**: The GitHub App private key, the webhook secret and every Discord webhook URL are SSM `SecureString` parameters (AWS-managed `aws/ssm` key). DynamoDB stores only a reference; no secret passes through CI, CloudFormation or the Lambda environment.
 - **Atomic Idempotency & Deduplication**: Prevents duplicate notifications during GitHub webhook retries using conditional DynamoDB `PutItem` (`attribute_not_exists(PK)`). Zero duplicate notifications even under concurrent delivery bursts.
-- **Single-Table Design**: All entities (Repository Configs, Delivery Deduplication Records, Commit History, Notification Logs) live in a single DynamoDB table with composite partition and sort keys (`PK` / `SK`).
+- **Single-Table Design**: All entities (workspaces, memberships, installations, repositories, destinations, deliveries, commits, notifications) live in a single DynamoDB table with composite partition and sort keys (`PK` / `SK`).
 - **Cryptographic Security**: Every incoming payload is validated using HMAC-SHA256 signatures with constant-time equality comparisons (`crypto.timingSafeEqual`) to prevent timing attack vulnerabilities.
 - **Resilient Delivery**: Automatic retry with exponential backoff on HTTP `429 Too Many Requests` respecting Discord's `Retry-After` rate-limit headers.
 - **Infrastructure as Code (IaC)**: Fully defined and reproducible using **AWS CDK (TypeScript)**. Production deploys run only through the GitHub Actions Deploy workflow (see [Deploy to AWS](#3-deploy-to-aws)).
-- **Comprehensive Test Suite & E2E Layer**: 23 test suites and 175 tests covering **~93% of the codebase**, including an end-to-end integration test layer validating the pipeline from API Gateway -> Lambda -> DynamoDB -> Discord mock.
+- **Comprehensive Test Suite & E2E Layer**: Unit and integration tests (including an end-to-end pipeline test) plus a DynamoDB Local suite that exercises the real conditional writes, transactions and concurrency guarantees.
 
 ---
 
@@ -83,35 +84,21 @@ flowchart TD
 
 | Entity | PK | SK | Key Attributes |
 |---|---|---|---|
-| **Discord Destination** | `DESTINATION#<destination_id>` | `CONFIG` | `destination_id`, `provider` (`discord`), `display_name`, `discord_webhook_url` *(backend only)*, `is_active`, `GSI1PK=TYPE#DESTINATION` |
-| **Repository Config** | `REPO#<github_repo_id>` | `CONFIG` | `github_full_name`, `github_url`, `discord_destination_id` *(foreign key)*, `watched_branch`, `is_active`, `GSI1PK=TYPE#REPO` |
-| **Delivery Lock** | `DELIVERY#<delivery_id>` | `DELIVERY#<delivery_id>` | `event_type` (`push` \| `pull_request`), `status` (`processing` \| `processed` \| `failed` \| `ignored`), `lease_expires_at`, `attempt_count`, `ttl` (30 days) |
-| **Commit Record** | `REPO#<github_repo_id>` | `COMMIT#<sha>` | `short_sha`, `author_name`, `message`, `additions`, `deletions`, `files`, `branch` |
-| **Notification Log** | `REPO#<github_repo_id>` | `NOTIF#<delivery_id>#<channel>[#<dest_id>]` | `channel`, `destination_id`, `status` (`sent` \| `failed`), `retry_count`, `error_message` |
+| **User Profile** | `USER#<user_id>` | `PROFILE` | `bootstrap_workspace_id`, `status` |
+| **Workspace** | `WS#<workspace_id>` | `META` | `status`, `github_user_id`, `installation_count`, `active_repo_count`, `active_destination_count` |
+| **Membership** | `WS#<workspace_id>` / `USER#<user_id>` | `MEMBER#<user_id>` / `MEMBERSHIP#<workspace_id>` | `role`, `status` |
+| **Installation** | `INSTALLATION#<installation_id>` | `META` | `workspace_id`, `account_type`, `status`, `GSI1PK=WS#<ws>#INSTALLATION` |
+| **Repository** | `REPO#<github_repo_id>` | `CONFIG` | `workspace_id`, `installation_id`, `discord_destination_id`, `watched_branch`, `is_active`, `GSI1PK=WS#<ws>#REPO` |
+| **Discord Destination** | `WS#<workspace_id>` | `DEST#<destination_id>` | `display_name`, `status`, `secret_ref {name, version}` *(SSM reference; the URL is never stored in DynamoDB)*, `webhook_id` |
+| **Delivery** | `DELIVERY#<delivery_id>` | `DELIVERY#<delivery_id>` | `status` (`processing` \| `processed` \| `failed` \| `ignored`), `lease_expires_at`, `ttl` (30 days); once processed: `workspace_id`, `summary`, `GSI1PK=WS#<ws>#DELIVERY` |
+| **Commit Record** | `REPO#<github_repo_id>` | `COMMIT#<sha>` | `delivery_id`, `workspace_id`, `short_sha`, `message`, `additions`, `deletions` |
+| **Notification Log** | `REPO#<github_repo_id>` | `NOTIF#<delivery_id>#<channel>[#<dest_id>]` | `workspace_id`, `status` (`sent` \| `failed`), `retry_count`, `error_message` (masked) |
 
 ---
 
-## Destination Management & Migration
+## Workspaces, Destinations and Secrets
 
-Syncro decouples Discord incoming webhooks into reusable destination entities, enabling multiple repositories to share a single Discord channel without secret duplication.
-
-### Migration from Legacy Configurations
-
-To migrate existing repository items containing direct `discord_webhook_url` attributes into normalized destination entities:
-
-```bash
-# 1. Preview changes safely without modifying DynamoDB
-npm run migrate:destinations:dry-run
-
-# 2. Apply migration idempotently
-npm run migrate:destinations
-```
-
-The migration script:
-- Reuses existing destinations when multiple repositories share the same webhook URL.
-- Retains legacy attributes for seamless zero-downtime backward compatibility.
-- Never prints raw webhook secrets or tokens (strictly masked with `[REDACTED]`).
-- Is fully idempotent and safe to resume if interrupted.
+Repositories, GitHub App installations and Discord destinations belong to a workspace. A repository is registered from a verified GitHub listing (the user must administer the repository), and notifies only a destination of its own workspace. Each destination's webhook URL is stored in SSM Parameter Store under a name derived from the workspace and destination IDs; DynamoDB keeps only a reference to it.
 
 ---
 
@@ -119,7 +106,8 @@ The migration script:
 
 ### Prerequisites
 
-- Node.js 22+ & npm
+- Node.js 24 & npm
+- Docker (for the DynamoDB Local test suite)
 - AWS CLI configured with active credentials
 - A GitHub App created with **Repository: Contents (Read)**, **Pull requests (Read)** & **Metadata (Read)** permissions (subscribed to **Push** and **Pull request** webhook events)
 - A Discord Webhook URL for your target channel
@@ -132,13 +120,22 @@ cd Syncro
 npm install
 ```
 
-### 2. Configure Credentials
+### 2. Configure Secrets and Settings
 
-Run the guided local configuration script to populate `.env.local` (never committed):
+Secrets are never stored in the repository, the workflow or the Lambda environment. Create them once in AWS SSM Parameter Store (standard tier, `SecureString`, default `aws/ssm` key) in the deployment region:
 
-```bash
-npm run setup:secrets
-```
+| Parameter | Value |
+|---|---|
+| `/syncro/prod/sender/github-app-private-key` | The GitHub App private key (PEM) |
+| `/syncro/prod/sender/github-webhook-secret` | The GitHub App webhook secret |
+
+Set these **non-secret** variables on the GitHub Actions `production` environment:
+
+| Variable | Purpose |
+|---|---|
+| `GH_APP_ID` | The GitHub App's numeric ID |
+| `SECRETS_EPOCH` | Any value; change it to make running Lambda containers re-read secrets after a rotation |
+| `TENANT_CUTOVER_READY` | Must be `confirmed` before the Deploy workflow will run (see below) |
 
 ### 3. Deploy to AWS
 
@@ -152,6 +149,8 @@ Production deploys happen **only** through the GitHub Actions **Deploy** workflo
 **Safeguards in the workflow:**
 - **Serialized deploys.** Runs share the `syncro-production-deploy` concurrency group. A running deploy is never cancelled. At most one run is pending, and a newer run replaces an older pending one.
 - **Stale-commit guard.** The run fails if its commit is no longer the head of `main`. It checks twice: before AWS credentials are configured, and again immediately before `cdk deploy`.
+- **Deploy env allowlist.** Only allowlisted, non-secret values may reach `cdk deploy`; the check also runs in CI.
+- **Tenant cutover gate.** Repositories that are not workspace-owned are ignored by the webhook path. The Deploy run refuses to start unless `TENANT_CUTOVER_READY` is `confirmed`, so a release can never silently stop notifications for existing repositories.
 
 The guard is a point-in-time check, **not a lock**. `main` can still move after the last check or while `cdk deploy` runs. **Do not merge into `main` while a Deploy run is waiting, pending or running.**
 
@@ -194,11 +193,7 @@ SyncroStack.HealthUrl = https://<api-id>.execute-api.<region>.amazonaws.com/v1/h
 
 ### 4. Register a Repository to Watch
 
-```bash
-npm run seed
-```
-
-Enter your repository's numeric GitHub ID, full name (`owner/repo`), and branch (`main`).
+Repositories are registered per workspace through the dashboard (arriving in a later release): install the GitHub App, then choose repositories from the verified listing and assign a Discord destination. Until then, no repository can be registered, which is why the tenant cutover gate above exists.
 
 ---
 
@@ -216,6 +211,10 @@ npm run type-check
 
 # Run ESLint
 npm run lint
+
+# Run the DynamoDB Local suite (start DynamoDB Local first)
+npm run local:dynamo
+npm run test:ddb
 ```
 
 ---

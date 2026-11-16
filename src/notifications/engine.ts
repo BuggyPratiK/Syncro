@@ -1,21 +1,36 @@
 /**
  * Notification Engine.
- * Dispatches notifications to configured providers for a given push event.
- * Provider selection is driven by repository config from DynamoDB.
+ * Dispatches notifications for a webhook delivery that has been resolved to a
+ * workspace (see webhooks/resolve-target.ts).
+ *
+ * The only possible target is the repository's destination inside its own
+ * workspace, and only while that destination can receive notifications
+ * (active, with a stored secret reference). There is no fallback: no global
+ * URL and no URL stored on any record. The webhook URL is read from SSM by the
+ * destination-secret reader, under a name derived here from the repository's
+ * workspace and destination; if it cannot be read, the notification is
+ * recorded as failed and nothing is sent.
  */
 
 import { PushEventSummary, GitHubPullRequestPayload } from "../types/github.types";
-import { NotificationPayload, NotificationProvider } from "../types/notification.types";
-import { RepoConfigItem } from "../types/dynamodb.types";
+import { NotificationPayload } from "../types/notification.types";
 import { DiscordProvider } from "./providers/discord.provider";
 import {
   createNotificationRecord,
   markNotificationSent,
   markNotificationFailed,
 } from "../db/operations/notification.ops";
-import { getDiscordDestination } from "../db/operations/destination.ops";
-import { extractDestinationId } from "../db/table";
+import { isDeliverableDestination } from "../db/operations/tenant-destination.ops";
+import { getBaseEnv } from "../config/env";
+import { deriveDestinationParamName } from "../secrets/param-names";
+import {
+  DestinationSecretError,
+  createDestinationSecretReader,
+} from "../secrets/destination-secrets";
+import type { DestinationSecretReader } from "../contracts/data-ops";
+import type { WebhookTarget } from "../webhooks/resolve-target";
 import { logger } from "../utils/logger";
+import type { Deadline } from "../utils/deadline";
 
 // Instantiate providers once per Lambda cold start (reused across warm invocations)
 const discordProvider = new DiscordProvider();
@@ -44,6 +59,7 @@ function buildPayload(summary: PushEventSummary): NotificationPayload {
     changedFiles: summary.commits.flatMap((c) => c.allChangedFiles),
     compareUrl: summary.compareUrl,
     timestamp: new Date().toISOString(),
+    commitsWithStats: summary.commitsWithStats,
   };
 }
 
@@ -85,146 +101,123 @@ export function buildPrPayload(
   };
 }
 
-interface ResolvedTarget {
-  provider: NotificationProvider;
-  targetUrl: string;
-  destinationId?: string;
+let secretReader: DestinationSecretReader | undefined;
+
+/** The per-container destination-secret reader (created on first use). */
+function reader(): DestinationSecretReader {
+  if (!secretReader) secretReader = createDestinationSecretReader();
+  return secretReader;
+}
+
+/** Test hook: replace the destination-secret reader. */
+export function setDestinationSecretReaderForTests(testReader: DestinationSecretReader | undefined): void {
+  secretReader = testReader;
 }
 
 /**
- * Resolves notification targets for a given repository.
- * Resolves normalized destination references (discord_destination_id) first,
- * and falls back to legacy direct webhook URLs for backward compatibility.
+ * Sends `payload` to the repository's destination, if it has a deliverable one.
  */
-async function resolveNotificationTargets(
-  repoConfig: RepoConfigItem,
-): Promise<ResolvedTarget[]> {
-  const targets: ResolvedTarget[] = [];
-
-  // 1. Check normalized Discord destination reference
-  if (repoConfig.discord_destination_id) {
-    const destination = await getDiscordDestination(repoConfig.discord_destination_id);
-    if (!destination) {
-      logger.warn("Referenced Discord destination not found", {
-        repo: repoConfig.github_full_name,
-        destinationId: repoConfig.discord_destination_id,
-      });
-    } else if (!destination.is_active) {
-      logger.warn("Referenced Discord destination is inactive — skipping notification", {
-        repo: repoConfig.github_full_name,
-        destinationId: destination.destination_id,
-        displayName: destination.display_name,
-      });
-    } else {
-      targets.push({
-        provider: discordProvider,
-        targetUrl: destination.discord_webhook_url,
-        destinationId: destination.destination_id,
-      });
-    }
-  } else if (repoConfig.discord_webhook_url) {
-    // 2. Backward compatibility fallback: repository item still has discord_webhook_url
-    targets.push({
-      provider: discordProvider,
-      targetUrl: repoConfig.discord_webhook_url,
-      destinationId: extractDestinationId(repoConfig.discord_webhook_url),
-    });
-  }
-
-  // Future providers (Phase 2 & Phase 3):
-  // if (repoConfig.telegram_chat_id) { ... }
-  // if (repoConfig.slack_webhook_url) { ... }
-
-  return targets;
-}
-
-/**
- * Helper to dispatch a NotificationPayload across all configured targets.
- */
-async function dispatchToProviders(
+async function dispatchToTarget(
   repoId: string,
   deliveryId: string,
   payload: NotificationPayload,
-  repoConfig: RepoConfigItem,
+  target: WebhookTarget,
+  deadline?: Deadline,
 ): Promise<void> {
-  const targets = await resolveNotificationTargets(repoConfig);
-
-  if (targets.length === 0) {
-    logger.warn("No active notification destinations configured for repo", {
+  const { repo, destination } = target;
+  if (!destination || !isDeliverableDestination(destination)) {
+    logger.warn("No deliverable destination for repo; nothing sent", {
       repo: payload.repoFullName,
+      destinationId: repo.discord_destination_id,
+      status: destination?.status,
     });
     return;
   }
 
-  // Send to all configured targets sequentially
-  for (const target of targets) {
-    const notificationId = await createNotificationRecord(
-      repoId,
-      deliveryId,
-      target.provider.channel,
-      target.destinationId,
-    );
+  const channel = discordProvider.channel;
+  const destinationId = destination.destination_id;
+  const { notificationId, alreadySent } = await createNotificationRecord(
+    repoId,
+    deliveryId,
+    channel,
+    destinationId,
+    repo.workspace_id,
+  );
 
-    try {
-      const result = await target.provider.send(payload, target.targetUrl);
+  // A retry of the same GitHub delivery must not post the same message twice.
+  if (alreadySent) {
+    logger.info("Notification already sent by an earlier attempt, skipping", { channel, repo: payload.repoFullName, destinationId });
+    return;
+  }
 
-      if (result.success) {
-        await markNotificationSent(repoId, notificationId, result.messageId);
-        logger.info("Notification delivered", {
-          channel: target.provider.channel,
-          repo: payload.repoFullName,
-          destinationId: target.destinationId,
-          retried: result.retried,
-          retryCount: result.retryCount,
-        });
-      } else {
-        await markNotificationFailed(
-          repoId,
-          notificationId,
-          result.error ?? "Unknown error",
-          result.retryCount,
-        );
-        logger.error("Notification delivery failed", {
-          channel: target.provider.channel,
-          repo: payload.repoFullName,
-          destinationId: target.destinationId,
-          error: result.error,
-          retryCount: result.retryCount,
-        });
-      }
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : String(error);
-      await markNotificationFailed(repoId, notificationId, errorMessage);
-      logger.error("Unexpected notification provider exception", {
-        channel: target.provider.channel,
+  // Read the webhook URL only under the name derived from the repository's own workspace.
+  let targetUrl: string;
+  try {
+    const expectedName = deriveDestinationParamName(repo.workspace_id, destinationId, getBaseEnv().SSM_PARAM_PREFIX);
+    targetUrl = await reader().read(destination.secret_ref!, expectedName);
+  } catch (error) {
+    const code = error instanceof DestinationSecretError ? error.code : "secret_unavailable";
+    await markNotificationFailed(repoId, notificationId, code);
+    logger.error("Destination webhook URL unavailable; nothing sent", { channel, repo: payload.repoFullName, destinationId, reason: code });
+    return;
+  }
+
+  try {
+    const result = await discordProvider.send(payload, targetUrl, { deadline });
+
+    if (result.success) {
+      await markNotificationSent(repoId, notificationId, result.messageId);
+      logger.info("Notification delivered", {
+        channel,
         repo: payload.repoFullName,
-        destinationId: target.destinationId,
-        error: errorMessage,
+        destinationId,
+        retried: result.retried,
+        retryCount: result.retryCount,
+      });
+    } else {
+      await markNotificationFailed(repoId, notificationId, result.error ?? "Unknown error", result.retryCount);
+      logger.error("Notification delivery failed", {
+        channel,
+        repo: payload.repoFullName,
+        destinationId,
+        error: result.error,
+        retryCount: result.retryCount,
       });
     }
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    await markNotificationFailed(repoId, notificationId, errorMessage);
+    logger.error("Unexpected notification provider exception", {
+      channel,
+      repo: payload.repoFullName,
+      destinationId,
+      error: errorMessage,
+    });
   }
 }
 
 /**
- * Sends notifications for a push event to all configured channels.
+ * Sends notifications for a push event to the repository's destination.
  */
 export async function dispatchPushNotification(
   summary: PushEventSummary,
-  repoConfig: RepoConfigItem,
+  target: WebhookTarget,
+  deadline?: Deadline,
 ): Promise<void> {
   const payload = buildPayload(summary);
-  await dispatchToProviders(summary.repoId, summary.deliveryId, payload, repoConfig);
+  await dispatchToTarget(summary.repoId, summary.deliveryId, payload, target, deadline);
 }
 
 /**
- * Sends notifications for a pull request event to all configured channels.
+ * Sends notifications for a pull request event to the repository's destination.
  */
 export async function dispatchPullRequestNotification(
   payload: GitHubPullRequestPayload,
-  repoConfig: RepoConfigItem,
+  target: WebhookTarget,
   deliveryId: string,
+  deadline?: Deadline,
 ): Promise<void> {
   const notifPayload = buildPrPayload(payload);
   const repoId = String(payload.repository.id);
-  await dispatchToProviders(repoId, deliveryId, notifPayload, repoConfig);
+  await dispatchToTarget(repoId, deliveryId, notifPayload, target, deadline);
 }

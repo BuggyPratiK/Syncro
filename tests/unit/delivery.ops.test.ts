@@ -24,9 +24,6 @@ describe("delivery.ops", () => {
       ...originalEnv,
       DYNAMODB_TABLE_NAME: "test-syncro-table",
       GITHUB_APP_ID: "123",
-      GITHUB_APP_PRIVATE_KEY: "dummy-key",
-      GITHUB_WEBHOOK_SECRET: "dummy-secret",
-      DISCORD_WEBHOOK_URL: "https://discord.com/api/webhooks/test",
     };
   });
 
@@ -125,6 +122,15 @@ describe("delivery.ops", () => {
       expect(callArgs.input.ExpressionAttributeValues[":status"]).toBe("failed");
       expect(callArgs.input.ExpressionAttributeValues[":error"]).toBe("Discord webhook timed out");
       expect(callArgs.input.ExpressionAttributeValues[":processedAt"]).toBeDefined();
+    });
+
+    it("masks secrets and caps the stored reason", async () => {
+      (ddb.send as jest.Mock).mockResolvedValueOnce({});
+      const reason = `post to https://discord.com/api/webhooks/123/secret-token failed ${"x".repeat(2000)}`;
+      await markDeliveryFailed("delivery-1", reason);
+      const stored = (ddb.send as jest.Mock).mock.calls[0][0].input.ExpressionAttributeValues[":error"];
+      expect(stored).not.toContain("secret-token");
+      expect(stored.length).toBeLessThanOrEqual(500);
     });
   });
 

@@ -7,14 +7,14 @@
 
 import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
 import { DynamoDBDocumentClient } from "@aws-sdk/lib-dynamodb";
-import { getEnv } from "../config/env";
+import { getBaseEnv } from "../config/env";
 
 let _rawClient: DynamoDBClient | undefined;
 let _ddb: DynamoDBDocumentClient | undefined;
 
 export function getDdbDocClient(): DynamoDBDocumentClient {
   if (!_ddb) {
-    const env = getEnv();
+    const env = getBaseEnv();
     _rawClient = new DynamoDBClient({
       region: env.AWS_REGION,
       // Only set endpoint for local DynamoDB development

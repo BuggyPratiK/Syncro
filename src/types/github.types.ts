@@ -66,6 +66,8 @@ export interface EnrichedCommit extends GitHubCommit {
   deletions: number;
   changedFiles: number;
   allChangedFiles: string[];
+  /** False when line stats could not be fetched (cap, timeout or error) and webhook data was used. */
+  statsFromApi?: boolean;
 }
 
 export interface PushEventSummary {
@@ -80,6 +82,8 @@ export interface PushEventSummary {
   totalFilesChanged: number;
   compareUrl: string;
   deliveryId: string;
+  /** Number of commits whose line stats came from the GitHub API (≤ the enrichment cap). */
+  commitsWithStats?: number;
 }
 
 export interface GitHubPullRequestBranch {

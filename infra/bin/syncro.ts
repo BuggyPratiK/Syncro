@@ -1,16 +1,13 @@
 import "source-map-support/register";
 import * as cdk from "aws-cdk-lib";
-import * as dotenv from "dotenv";
-import * as path from "path";
-import * as fs from "fs";
 import { SyncroStack } from "../lib/syncro-stack";
 
-const envLocal = path.resolve(__dirname, "../../.env.local");
-const envDefault = path.resolve(__dirname, "../../.env");
-if (fs.existsSync(envLocal)) {
-  dotenv.config({ path: envLocal });
-} else if (fs.existsSync(envDefault)) {
-  dotenv.config({ path: envDefault });
+// Configuration comes only from the process environment, which the Deploy
+// workflow restricts to an allowlist of non-secret values. No .env file is
+// loaded: secrets never pass through CDK (they live in SSM Parameter Store).
+const logLevel = process.env.LOG_LEVEL;
+if (logLevel !== undefined && !["debug", "info", "warn", "error"].includes(logLevel)) {
+  throw new Error("LOG_LEVEL must be one of debug, info, warn, error");
 }
 
 const app = new cdk.App();
@@ -21,4 +18,7 @@ new SyncroStack(app, "SyncroStack", {
     region: process.env.AWS_REGION ?? process.env.CDK_DEFAULT_REGION ?? "ap-southeast-2",
   },
   description: "Syncro - GitHub Notification Bot (Lambda + API Gateway + DynamoDB)",
+  githubAppId: process.env.GITHUB_APP_ID ?? "",
+  logLevel: logLevel as "debug" | "info" | "warn" | "error" | undefined,
+  secretsEpoch: process.env.SECRETS_EPOCH || undefined,
 });

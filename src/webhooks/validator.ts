@@ -1,11 +1,15 @@
-﻿/**
+/**
  * GitHub webhook signature validator.
  * Must be called with the RAW request body before any JSON parsing.
+ *
+ * The webhook secret comes from SSM (see config/secrets). If it cannot be
+ * read, `SecretUnavailableError` propagates and the request must not be
+ * processed.
  */
 
 import { APIGatewayProxyEvent } from "aws-lambda";
 import { verifyGitHubSignature } from "../utils/crypto";
-import { getEnv } from "../config/env";
+import { getSenderSecrets } from "../config/secrets";
 
 export interface ValidationResult {
   valid: boolean;
@@ -16,7 +20,9 @@ export interface ValidationResult {
 /**
  * Validates the GitHub webhook signature from an API Gateway event.
  */
-export function validateWebhookSignature(event: APIGatewayProxyEvent): ValidationResult {
+export async function validateWebhookSignature(
+  event: APIGatewayProxyEvent,
+): Promise<ValidationResult> {
   const signature = event.headers["x-hub-signature-256"] ?? event.headers["X-Hub-Signature-256"];
 
   if (!signature) {
@@ -28,7 +34,8 @@ export function validateWebhookSignature(event: APIGatewayProxyEvent): Validatio
     ? Buffer.from(event.body ?? "", "base64").toString("utf8")
     : (event.body ?? "");
 
-  const isValid = verifyGitHubSignature(getEnv().GITHUB_WEBHOOK_SECRET, rawBody, signature);
+  const { githubWebhookSecret } = await getSenderSecrets();
+  const isValid = verifyGitHubSignature(githubWebhookSecret, rawBody, signature);
 
   if (!isValid) {
     return { valid: false, rawBody, error: "Invalid webhook signature" };

@@ -1,4 +1,4 @@
-﻿/**
+/**
  * DynamoDB operations for commit record items.
  */
 
@@ -17,6 +17,7 @@ export async function saveCommit(
   deliveryId: string,
   branch: string,
   commit: EnrichedCommit,
+  workspaceId?: string,
 ): Promise<void> {
   const item: CommitItem = {
     ...keys.commit(githubRepoId, commit.id),
@@ -33,6 +34,7 @@ export async function saveCommit(
     changed_files: commit.allChangedFiles,
     github_url: commit.url,
     committed_at: commit.timestamp,
+    ...(workspaceId ? { workspace_id: workspaceId } : {}),
   };
 
   await ddb.send(new PutCommand({ TableName: tableName(), Item: item }));

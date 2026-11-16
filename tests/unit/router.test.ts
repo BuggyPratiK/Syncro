@@ -54,7 +54,7 @@ describe("routeWebhookEvent", () => {
     const result = await routeWebhookEvent(event, payload, "delivery-1");
     expect(result.handled).toBe(true);
     expect(result.eventType).toBe("push");
-    expect(handlers.handlePushEvent).toHaveBeenCalledWith(payload, "delivery-1", 9999);
+    expect(handlers.handlePushEvent).toHaveBeenCalledWith(payload, "delivery-1", 9999, undefined);
   });
 
   it("dispatches pull_request events to handlePullRequestEvent and returns handled: true", async () => {
@@ -68,6 +68,14 @@ describe("routeWebhookEvent", () => {
     const result = await routeWebhookEvent(event, payload, "delivery-pr-1");
     expect(result.handled).toBe(true);
     expect(result.eventType).toBe("pull_request");
-    expect(handlers.handlePullRequestEvent).toHaveBeenCalledWith(payload, "delivery-pr-1");
+    // No installation in the payload: passed through as undefined (the handler then ignores it).
+    expect(handlers.handlePullRequestEvent).toHaveBeenCalledWith(payload, "delivery-pr-1", undefined, undefined);
+  });
+
+  it("passes the payload's installation ID to the pull_request handler", async () => {
+    const event = createEvent({ "x-github-event": "pull_request" });
+    const payload = { repository: { id: 12345 }, installation: { id: 9999 }, action: "opened", pull_request: { number: 10 } };
+    await routeWebhookEvent(event, payload, "delivery-pr-2");
+    expect(handlers.handlePullRequestEvent).toHaveBeenCalledWith(payload, "delivery-pr-2", 9999, undefined);
   });
 });

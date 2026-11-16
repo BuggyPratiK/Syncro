@@ -19,6 +19,9 @@ import * as path from "path";
 import { ddb } from "../../src/db/client";
 import { ConditionalCheckFailedException } from "@aws-sdk/client-dynamodb";
 import { PutCommand, GetCommand, UpdateCommand, QueryCommand } from "@aws-sdk/lib-dynamodb";
+import { setParameterReaderForTests } from "../../src/config/secrets";
+import { setDestinationSecretReaderForTests } from "../../src/notifications/engine";
+import { deriveDestinationParamName } from "../../src/secrets/param-names";
 
 jest.mock("../../src/db/client", () => ({
   ddb: {
@@ -27,6 +30,24 @@ jest.mock("../../src/db/client", () => ({
 }));
 
 const TEST_SECRET = "test-webhook-secret-xyz";
+const E2E_WS = "ws_e2e00000-0000-4000-8000-000000000001";
+const E2E_DEST = "e2e00000-0000-4000-8000-0000000000d1";
+const E2E_URL = "https://discord.com/api/webhooks/987654321098765432/e2e-channel-token";
+
+// Fake SSM reader for destination URLs: returns the channel URL only for the
+// derived parameter name of this repository's own workspace and destination.
+setDestinationSecretReaderForTests({
+  read: async (ref, expectedName) => {
+    if (ref.name !== expectedName) throw new Error("unexpected parameter");
+    return E2E_URL;
+  },
+});
+
+// Fake SSM: the webhook secret used to sign requests, and a dummy App key
+// (the GitHub App client is mocked, so the key is never used for signing).
+setParameterReaderForTests(async (name) =>
+  name.endsWith("/sender/github-webhook-secret") ? TEST_SECRET : "dummy-private-key",
+);
 
 describe("Webhook Pipeline E2E Integration Tests", () => {
   // In-memory DynamoDB store: key = `${PK}##${SK}`
@@ -35,6 +56,7 @@ describe("Webhook Pipeline E2E Integration Tests", () => {
 
   const mockContext: Context = {
     awsRequestId: "e2e-aws-request-id-999",
+    getRemainingTimeInMillis: () => 15_000, // same budget as the deployed function
   } as any;
 
   function storeKey(pk: string, sk: string): string {
@@ -85,37 +107,49 @@ describe("Webhook Pipeline E2E Integration Tests", () => {
     dbStore.clear();
     discordCalls = [];
 
-    // Seed active Discord destination in in-memory DynamoDB
-    const destinationConfig = {
-      PK: "DESTINATION#dest-e2e-001",
-      SK: "CONFIG",
-      destination_id: "dest-e2e-001",
-      provider: "discord",
-      display_name: "E2E Channel",
-      discord_webhook_url: "https://discord.com/api/webhooks/987654321098765432/e2e-channel-token",
-      is_active: true,
-      GSI1PK: "TYPE#DESTINATION",
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
-    };
-    dbStore.set(storeKey(destinationConfig.PK, destinationConfig.SK), { ...destinationConfig });
-
-    // Seed active watched repository in in-memory DynamoDB referencing destination
-    const repoConfig = {
+    // Seed a workspace-owned repository: active workspace, the installation the
+    // fixtures' payloads come from, the repository, and its destination (the
+    // webhook URL itself lives in SSM; here a fake reader returns it).
+    const now = new Date().toISOString();
+    const seed = (item: Record<string, unknown>) => dbStore.set(storeKey(String(item.PK), String(item.SK)), { ...item });
+    seed({ PK: `WS#${E2E_WS}`, SK: "META", workspace_id: E2E_WS, status: "active", created_by: "logto:e2eowner0001", created_at: now });
+    seed({
+      PK: "INSTALLATION#99887766",
+      SK: "META",
+      installation_id: "99887766",
+      workspace_id: E2E_WS,
+      status: "active",
+      account_type: "User",
+      created_at: now,
+    });
+    seed({
       PK: "REPO#987654321",
       SK: "CONFIG",
       github_repo_id: "987654321",
       github_full_name: "acme/syncro",
       github_url: "https://github.com/acme/syncro",
-      discord_destination_id: "dest-e2e-001",
-      discord_webhook_url: "https://discord.com/api/webhooks/987654321098765432/e2e-channel-token",
+      workspace_id: E2E_WS,
+      installation_id: "99887766",
+      discord_destination_id: E2E_DEST,
       watched_branch: "main",
       is_active: true,
-      GSI1PK: "TYPE#REPO",
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
-    };
-    dbStore.set(storeKey(repoConfig.PK, repoConfig.SK), { ...repoConfig });
+      GSI1PK: `WS#${E2E_WS}#REPO`,
+      created_at: now,
+      updated_at: now,
+    });
+    seed({
+      PK: `WS#${E2E_WS}`,
+      SK: `DEST#${E2E_DEST}`,
+      destination_id: E2E_DEST,
+      workspace_id: E2E_WS,
+      provider: "discord",
+      display_name: "E2E Channel",
+      status: "active",
+      secret_ref: { name: deriveDestinationParamName(E2E_WS, E2E_DEST, "/syncro/prod"), version: 1 },
+      webhook_id: "987654321098765432",
+      created_at: now,
+      updated_at: now,
+    });
 
     // Mock DynamoDB send to operate against in-memory store
     (ddb.send as jest.Mock).mockImplementation(async (command: any) => {
