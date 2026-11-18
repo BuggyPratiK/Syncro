@@ -103,4 +103,17 @@ describe("buildPushEmbed", () => {
     expect(embed.description).toContain("**1 commit** pushed by **pratik**");
     expect(embed.description).toContain("1 file changed");
   });
+
+  it("uses no emoji in the title or field names", () => {
+    const embed = buildPushEmbed(basePayload);
+    const pictographic = /\p{Extended_Pictographic}/u;
+    expect(embed.title).toBe("MAIN updated - acme/syncro");
+    expect(embed.fields.map((f) => f.name)).toEqual([
+      "Commits",
+      "Files Changed",
+      "Sync your repo before starting work",
+      "Links",
+    ]);
+    for (const field of embed.fields) expect(field.name).not.toMatch(pictographic);
+  });
 });

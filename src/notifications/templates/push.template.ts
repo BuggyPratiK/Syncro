@@ -60,29 +60,29 @@ export function buildPushEmbed(payload: NotificationPayload): DiscordEmbed {
   const pullCommand = `\`\`\`bash\ngit pull origin ${payload.branch}\n\`\`\``;
 
   return {
-    title: `🚀 ${payload.branch.toUpperCase()} updated - ${payload.repoFullName}`,
+    title: `${payload.branch.toUpperCase()} updated - ${payload.repoFullName}`,
     description:
       `**${payload.commits.length} commit${payload.commits.length !== 1 ? "s" : ""}** pushed by **${payload.pusherName}** ` +
       `• ${formatDiff(payload.totalAdditions, payload.totalDeletions)} • ${payload.totalFilesChanged} file${payload.totalFilesChanged !== 1 ? "s" : ""} changed${statsNote}`,
     color,
     fields: [
       {
-        name: "📦 Commits",
+        name: "Commits",
         value: commitValue || "*No commits*",
         inline: false,
       },
       {
-        name: "📁 Files Changed",
+        name: "Files Changed",
         value: filesValue,
         inline: false,
       },
       {
-        name: "🔄 Sync your repo before starting work",
+        name: "Sync your repo before starting work",
         value: pullCommand,
         inline: false,
       },
       {
-        name: "🔗 Links",
+        name: "Links",
         value: `[View Changes](${payload.compareUrl}) • [Repository](${payload.repoUrl})`,
         inline: false,
       },

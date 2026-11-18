@@ -41,16 +41,16 @@ describe("buildPrEmbed", () => {
     expect(embed.timestamp).toBe(basePayload.timestamp);
     expect(embed.footer.text).toContain("Syncro");
 
-    const branchField = embed.fields.find((f) => f.name === "🎯 Branches");
+    const branchField = embed.fields.find((f) => f.name === "Branches");
     expect(branchField?.value).toContain("`feature/auth` ➔ `main`");
 
-    const changesField = embed.fields.find((f) => f.name === "📊 Changes");
+    const changesField = embed.fields.find((f) => f.name === "Changes");
     expect(changesField?.value).toContain("+120 / -15 • 3 files changed");
 
-    const descField = embed.fields.find((f) => f.name === "📝 Description");
+    const descField = embed.fields.find((f) => f.name === "Description");
     expect(descField?.value).toBe("Adds JWT auth middleware and login endpoint.");
 
-    const actionField = embed.fields.find((f) => f.name === "👀 Review Required");
+    const actionField = embed.fields.find((f) => f.name === "Review Required");
     expect(actionField?.value).toContain("Review the proposed changes");
   });
 
@@ -70,7 +70,7 @@ describe("buildPrEmbed", () => {
     expect(embed.color).toBe(0x8250df);
 
     const syncField = embed.fields.find((f) => f.name.includes("Sync your local branch"));
-    expect(syncField?.name).toBe("🔄 Sync your local branch with main");
+    expect(syncField?.name).toBe("Sync your local branch with main");
     expect(syncField?.value).toContain("git pull origin main");
   });
 
@@ -87,7 +87,7 @@ describe("buildPrEmbed", () => {
 
     const embed = buildPrEmbed(devMergedPayload);
     const syncField = embed.fields.find((f) => f.name.includes("Sync your local branch"));
-    expect(syncField?.name).toBe("🔄 Sync your local branch with develop");
+    expect(syncField?.name).toBe("Sync your local branch with develop");
     expect(syncField?.value).toContain("git pull origin develop");
   });
 
@@ -145,8 +145,25 @@ describe("buildPrEmbed", () => {
 
     const embed = buildPrEmbed(payloadWithoutPr);
 
-    expect(embed.title).toBe("🔀 Pull Request - acme/syncro");
+    expect(embed.title).toBe("Pull Request - acme/syncro");
     expect(embed.color).toBe(0x2ea043);
+  });
+
+  it("uses no emoji in titles or field names; status is carried by color and wording", () => {
+    const pictographic = /\p{Extended_Pictographic}/u;
+    const variants: NotificationPayload[] = [
+      basePayload,
+      { ...basePayload, pullRequest: { ...basePayload.pullRequest!, action: "closed", merged: true } },
+      { ...basePayload, pullRequest: { ...basePayload.pullRequest!, action: "closed", merged: false } },
+      { ...basePayload, pullRequest: { ...basePayload.pullRequest!, action: "reopened" } },
+      { ...basePayload, pullRequest: { ...basePayload.pullRequest!, draft: true } },
+      { ...basePayload, pullRequest: undefined },
+    ];
+    for (const payload of variants) {
+      const embed = buildPrEmbed(payload);
+      expect(embed.title).not.toMatch(pictographic);
+      for (const field of embed.fields) expect(field.name).not.toMatch(pictographic);
+    }
   });
 });
 
