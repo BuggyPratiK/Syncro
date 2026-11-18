@@ -182,7 +182,7 @@ describe("dashboard role", () => {
     const fn = lambdaByName(template, "syncro-dashboard-api")!;
     expect(fn.Properties.Runtime).toBe("nodejs24.x");
     const env = fn.Properties.Environment!.Variables;
-    const schemaKeys = Object.keys((dashboardEnvSchema as unknown as { _def: { schema: { shape: object } } })._def.schema.shape);
+    const schemaKeys = Object.keys(dashboardEnvSchema.shape);
     for (const k of Object.keys(env)) expect(schemaKeys).toContain(k);
     const asStrings = Object.fromEntries(Object.entries(env).map(([k, v]) => [k, typeof v === "string" ? v : "syncro"]));
     expect(() => parseDashboardEnv(asStrings)).not.toThrow();
