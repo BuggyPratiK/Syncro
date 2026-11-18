@@ -215,7 +215,52 @@ npm run lint
 # Run the DynamoDB Local suite (start DynamoDB Local first)
 npm run local:dynamo
 npm run test:ddb
+
+# Web dashboard checks (separate package in web/)
+npm --prefix web ci
+npm --prefix web run lint
+npm --prefix web run type-check
+npm --prefix web test
+npm --prefix web run build
 ```
+
+---
+
+## Dashboard
+
+The dashboard is a static single-page app in `web/` (React, TypeScript, Vite, Tailwind CSS, TanStack Query) that talks to a separate **dashboard API**: an HTTP API and Lambda (`syncro-dashboard-api`) that the CDK stack creates only when `DASHBOARD_ENABLED=true`.
+
+### Dashboard API
+
+- **Routes:** the route table in `src/contracts/routes.ts` is the single source of truth (profile and workspace creation, GitHub App installation and repository listing, repositories, Discord destinations, delivery history). Anything else answers 404.
+- **Authentication:** every request carries a Logto access token for the dashboard API resource (`Authorization: Bearer <token>`). Workspace routes require membership of the workspace in the path; write routes require the owner role.
+- **Responses:** success is `200` with a JSON body. Errors are `{ "error": "<code>" }`, with codes and statuses defined in `src/contracts/errors.ts`; `invalid_request` adds the invalid field paths, and `429 rate_limited` carries `Retry-After`.
+- **Safeguards:** request bodies are limited to 16 KB, writes have per-user rate limits, and each workspace may have up to 25 active repositories and 10 active destinations.
+- **Webhook URLs are write-only:** they are stored in SSM Parameter Store and only ever returned in masked form.
+
+The web app imports only `src/contracts` from the backend; CI enforces this with a lint rule and also scans the production bundle for anything resembling a secret.
+
+### Running the dashboard locally
+
+The local runner (`npm run dev:dashboard`) serves the real dashboard API on `http://127.0.0.1:8787` against DynamoDB Local. It never touches AWS: it refuses non-local DynamoDB endpoints, replaces AWS credentials with inert values and keeps destination webhook URLs in memory. Use a Logto development tenant and a development GitHub App, never production ones.
+
+```bash
+# Terminal 1: DynamoDB Local
+npm run local:dynamo
+
+# Terminal 2: dashboard API (CORS origin http://localhost:5173 by default)
+export LOGTO_ISSUER=... LOGTO_JWKS_URI=... API_AUDIENCE=... LOGTO_SPA_CLIENT_ID=...
+export GITHUB_APP_ID=... GITHUB_APP_CLIENT_ID=... GITHUB_APP_SLUG=...
+export DEV_GITHUB_OAUTH_CLIENT_SECRET=...   # needed only for GitHub claim and repository listing
+npm run dev:dashboard -- --open-signups     # --open-signups sets signup mode to open on the local table
+
+# Terminal 3: web app on http://localhost:5173
+cp web/.env.example web/.env.local          # fill in the public Logto development values
+npm --prefix web ci
+npm --prefix web run dev
+```
+
+To work on the interface without Logto or the API, set `VITE_FIXTURES=true` in `web/.env.local`: the app then runs against in-memory sample data with a signed-in test user. Fixture mode exists only in development builds.
 
 ---
 
