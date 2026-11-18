@@ -10,6 +10,30 @@ if (logLevel !== undefined && !["debug", "info", "warn", "error"].includes(logLe
   throw new Error("LOG_LEVEL must be one of debug, info, warn, error");
 }
 
+// The dashboard is off unless DASHBOARD_ENABLED is exactly "true"; absent or
+// "false" synthesizes no dashboard resources.
+const dashboardFlag = process.env.DASHBOARD_ENABLED;
+if (dashboardFlag !== undefined && dashboardFlag !== "" && dashboardFlag !== "true" && dashboardFlag !== "false") {
+  throw new Error("DASHBOARD_ENABLED must be true or false");
+}
+const required = (name: string): string => {
+  const value = process.env[name];
+  if (!value) throw new Error(`${name} is required when DASHBOARD_ENABLED=true`);
+  return value;
+};
+const dashboard =
+  dashboardFlag === "true"
+    ? {
+        githubAppClientId: required("GITHUB_APP_CLIENT_ID"),
+        githubAppSlug: required("GITHUB_APP_SLUG"),
+        logtoIssuer: required("LOGTO_ISSUER"),
+        logtoJwksUri: required("LOGTO_JWKS_URI"),
+        apiAudience: required("API_AUDIENCE"),
+        logtoSpaClientId: required("LOGTO_SPA_CLIENT_ID"),
+        corsOrigin: required("CORS_ORIGIN"),
+      }
+    : undefined;
+
 const app = new cdk.App();
 
 new SyncroStack(app, "SyncroStack", {
@@ -21,4 +45,5 @@ new SyncroStack(app, "SyncroStack", {
   githubAppId: process.env.GITHUB_APP_ID ?? "",
   logLevel: logLevel as "debug" | "info" | "warn" | "error" | undefined,
   secretsEpoch: process.env.SECRETS_EPOCH || undefined,
+  dashboard,
 });
