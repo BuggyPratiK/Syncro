@@ -1,0 +1,14 @@
+{
+  // Settings for all test suites: used by ts-jest when running them, by
+  // `npm run type-check` (which also covers the DynamoDB Local suites without
+  // Docker), and by editors for files under tests/.
+  "extends": "../tsconfig.json",
+  "compilerOptions": {
+    "rootDir": "..",
+    "types": ["node", "jest"],
+    "declaration": false,
+    "declarationMap": false
+  },
+  "include": ["./**/*", "../src/**/*", "../infra/**/*", "../scripts/**/*", "../__mocks__/**/*"],
+  "exclude": ["../node_modules", "../dist", "../infra/dist", "../cdk.out"]
+}

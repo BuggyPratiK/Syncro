@@ -2,7 +2,10 @@
   "compilerOptions": {
     "target": "ES2022",
     "module": "commonjs",
+    // Explicit: TypeScript 6 no longer supports the old Node 10 resolution.
+    "moduleResolution": "bundler",
     "lib": ["ES2022"],
+    "types": ["node"],
     "outDir": "./infra/dist",
     "rootDir": "./infra",
     "strict": true,

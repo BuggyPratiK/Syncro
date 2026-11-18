@@ -106,7 +106,7 @@ export class InvalidEnvironmentError extends Error {
   }
 }
 
-function parseWith<T>(schema: z.ZodType<T, z.ZodTypeDef, unknown>, source: NodeJS.ProcessEnv): T {
+function parseWith<T>(schema: z.ZodType<T>, source: NodeJS.ProcessEnv): T {
   const result = schema.safeParse(source);
   if (!result.success) {
     const fields = [...new Set(result.error.issues.map((i) => String(i.path[0] ?? "(root)")))].sort();

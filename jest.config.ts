@@ -1,3 +1,6 @@
+/** @jest-config-loader ts-node */
+// Jest loads this file with ts-node: Node's built-in TypeScript loader would
+// require explicit file extensions on the imports below.
 import type { Config } from "jest";
 import { baseConfig } from "./jest.base";
 

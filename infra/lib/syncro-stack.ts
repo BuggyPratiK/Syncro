@@ -84,7 +84,9 @@ export class SyncroStack extends cdk.Stack {
       removalPolicy: cdk.RemovalPolicy.DESTROY,
     });
 
-    // Lambda Function with full dependency bundling via esbuild.
+    // Lambda Function with full dependency bundling via esbuild, including the
+    // AWS SDK: production runs the SDK version the lockfile pins and the tests
+    // exercised, not the copy the Lambda runtime ships and updates on its own.
     // Environment: non-secret values only (validated at cold start by the
     // webhook env schema); secrets are referenced by SSM parameter name.
     const fn = new lambdaNodejs.NodejsFunction(this, "SyncroHandler", {
@@ -99,6 +101,7 @@ export class SyncroStack extends cdk.Stack {
         minify: true,
         sourceMap: true,
         target: "node24",
+        bundleAwsSDK: true,
       },
       environment: {
         LOG_LEVEL: props.logLevel ?? "info",
