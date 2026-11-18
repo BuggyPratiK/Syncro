@@ -1,6 +1,0 @@
-{
-  // Use the project's TypeScript (node_modules) instead of the version bundled
-  // with VS Code, so the editor reports exactly what the build and CI report.
-  "typescript.tsdk": "node_modules/typescript/lib",
-  "typescript.enablePromptUseWorkspaceTsdk": true
-}
