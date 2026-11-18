@@ -226,7 +226,8 @@ export class DashboardApi extends Construct {
       timeout: cdk.Duration.seconds(25),
       role: this.role,
       logGroup,
-      bundling: { minify: true, sourceMap: true, target: "node24" },
+      // The AWS SDK is bundled so production runs the pinned, tested version.
+      bundling: { minify: true, sourceMap: true, target: "node24", bundleAwsSDK: true },
       environment: {
         LOG_LEVEL: props.logLevel ?? "info",
         DYNAMODB_TABLE_NAME: props.table.tableName,
