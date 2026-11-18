@@ -263,9 +263,9 @@ export interface RepoOps {
 // channel). Each is stored as its own encrypted SSM SecureString parameter;
 // DynamoDB keeps only a reference to it.
 //
-// PROVISIONAL: the interfaces in this section are not final. They may still
-// change once the IAM permission tests for the writer (dashboard) and reader
-// (sender) roles are in place. Do not build against them as a stable API yet.
+// The interfaces in this section are frozen: the writer (dashboard) and reader
+// (sender) implementations and the IAM permission tests for both roles are
+// built on them. Treat any change as a contract change.
 
 /** Reference to the SSM parameter holding a webhook URL. Never returned by the API. */
 export interface SecretRef {
