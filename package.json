@@ -25,6 +25,7 @@
         "cdk:destroy": "cdk destroy",
         "local:dynamo": "docker run --rm -p 8000:8000 amazon/dynamodb-local:3.3.2@sha256:6ada631ec7aa5fc83446855eb17233e3dad184fec47477e8140c6c569cfe0c86",
         "signup:mode": "ts-node scripts/set-signup-mode.ts",
+        "dev:dashboard": "ts-node -P scripts/tsconfig.json scripts/dev-dashboard-runner.ts",
         "format": "prettier --write \"src/**/*.ts\" \"infra/**/*.ts\""
     },
     "dependencies": {

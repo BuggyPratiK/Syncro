@@ -174,6 +174,12 @@ export async function tokenFor(userId: string): Promise<string> {
     .sign(signingKey);
 }
 
+/** The real Logto token verifier, trusting only the local test key. */
+export async function localAuthenticator() {
+  const { keySet } = await keys();
+  return createAuthenticator({ issuer: ISSUER, audience: AUDIENCE, clientId: CLIENT_ID, jwksUri: "https://unused.invalid/jwks" }, keySet);
+}
+
 export interface DashboardApp {
   handle: DashboardHandler;
   github: FakeGitHub;
