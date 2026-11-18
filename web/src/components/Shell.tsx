@@ -2,15 +2,33 @@ import type { ReactNode } from "react";
 import { Link, NavLink } from "react-router";
 import { PATHS } from "../paths";
 
-/** Relay mark (filled accent square joined to an outlined square) and name. */
+/**
+ * Syncro mark: a squared-off "S" route joining an outlined node (bottom left)
+ * to a filled accent node (top right). Proportions follow the approved icon
+ * artwork (viewBox cropped to the artwork); colors come from the theme tokens
+ * so it matches in Paper and Ink.
+ */
+export function SyncroMark({ size = 26 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="216 232 576 576" aria-hidden="true" focusable="false">
+      <path
+        d="M645 305.5H291.5V512H732.5V718.5H395"
+        fill="none"
+        stroke="var(--ink)"
+        strokeWidth="45"
+        strokeLinejoin="miter"
+      />
+      <rect x="238.5" y="651.5" width="134" height="134" fill="none" stroke="var(--ink)" strokeWidth="45" />
+      <rect x="645" y="232" width="147" height="147" fill="var(--ac)" />
+    </svg>
+  );
+}
+
+/** Mark and the serif "Syncro" name, sized and spaced as in the approved logo artwork. */
 export function Wordmark({ compact = false }: { compact?: boolean }) {
   return (
     <span className="inline-flex items-center gap-2.5">
-      <svg width="22" height="22" viewBox="0 0 22 22" aria-hidden="true" focusable="false">
-        <rect x="1" y="1" width="9" height="9" fill="var(--ac)" />
-        <rect x="12.75" y="12.75" width="8.25" height="8.25" fill="none" stroke="var(--ink)" strokeWidth="1.5" />
-        <path d="M5.5 10v7h7.25" fill="none" stroke="var(--ink)" strokeWidth="1.5" />
-      </svg>
+      <SyncroMark size={compact ? 20 : 22} />
       <span className={`font-serif ${compact ? "text-[21px]" : "text-[24px]"}`}>Syncro</span>
     </span>
   );
