@@ -159,22 +159,72 @@ describe("GitHub install and claim", () => {
     expect(await itemsWith(`INSTALLATION#${w.installationId}`)).toHaveLength(1);
   });
 
-  it("another workspace cannot take a claimed installation or a linked GitHub account", async () => {
-    const a = await onboard(app, newUserId());
-    const uidB = newUserId();
-    const wsB = String((await call(app, uidB, "POST", "/api/me/bootstrap")).body.workspaceId);
-    const baseB = `/api/workspaces/${wsB}`;
+  /** Bootstraps a fresh workspace and returns its owner, ID and base path. */
+  async function freshWorkspace() {
+    const uid = newUserId();
+    const workspaceId = String((await call(app, uid, "POST", "/api/me/bootstrap")).body.workspaceId);
+    return { uid, workspaceId, base: `/api/workspaces/${workspaceId}` };
+  }
 
-    // Same GitHub account (the installation's owner) signing in to a second workspace.
-    const state = stateOf(await call(app, uidB, "POST", `${baseB}/github/install-url`));
-    const res = await call(app, uidB, "POST", `${baseB}/github/claim`, {
-      body: { code: app.github.code(a.githubUserId), installationId: String(a.installationId), state },
+  async function claim(uid: string, base: string, githubUserId: number, installationId: number) {
+    const state = stateOf(await call(app, uid, "POST", `${base}/github/install-url`));
+    return call(app, uid, "POST", `${base}/github/claim`, {
+      body: { code: app.github.code(githubUserId), installationId: String(installationId), state },
     });
+  }
+
+  // The claim transaction checks, in this order: the workspace (its linked GitHub
+  // account and installation count), the GitHub account link, then the
+  // installation item. The first failed check decides the refusal.
+
+  it("a GitHub account linked to one workspace cannot be linked to another: 409 github_identity_in_use", async () => {
+    const a = await onboard(app, newUserId());
+    const b = await freshWorkspace();
+
+    // The installation owner signs in to a second, unlinked workspace. The
+    // workspace check passes; the GitHub account link belongs to A.
+    const res = await claim(b.uid, b.base, a.githubUserId, a.installationId);
     expect(res.status).toBe(409);
-    expect(["installation_claimed", "github_identity_in_use"]).toContain(res.body.error);
+    expect(res.body).toEqual({ error: "github_identity_in_use" });
     expect(await get(`INSTALLATION#${a.installationId}`, "META")).toMatchObject({ workspace_id: a.workspaceId });
     expect(await get(`GHUSER#${a.githubUserId}`, "LINK")).toMatchObject({ workspace_id: a.workspaceId });
-    expect((await get(`WS#${wsB}`, "META"))?.installation_count ?? 0).toBe(0);
+    expect(await get(`WS#${b.workspaceId}`, "META")).not.toHaveProperty("github_user_id");
+    expect((await get(`WS#${b.workspaceId}`, "META"))?.installation_count ?? 0).toBe(0);
+  });
+
+  it("a workspace linked to one GitHub account cannot claim as another: 409 github_identity_mismatch", async () => {
+    const w = await onboard(app, newUserId());
+    const otherUser = githubNumber();
+    const otherInstallation = githubNumber();
+    app.github.addPersonalInstallation(otherInstallation, otherUser, [{ id: githubNumber() }]);
+
+    const res = await claim(w.uid, w.base, otherUser, otherInstallation);
+    expect(res.status).toBe(409);
+    expect(res.body).toEqual({ error: "github_identity_mismatch" });
+    expect(await itemsWith(`INSTALLATION#${otherInstallation}`)).toEqual([]);
+    expect(await itemsWith(`GHUSER#${otherUser}`)).toEqual([]);
+    expect(await get(`WS#${w.workspaceId}`, "META")).toMatchObject({ github_user_id: String(w.githubUserId), installation_count: 1 });
+  });
+
+  it("an installation claimed by one workspace cannot be claimed by another: 409 installation_claimed", async () => {
+    // Only an organization installation can be verified by two different
+    // GitHub users (two admins), so only it reaches the installation check.
+    const org = { id: githubNumber(), login: `org${githubNumber()}` };
+    const admin1 = githubNumber();
+    const admin2 = githubNumber();
+    const installationId = githubNumber();
+    app.github.addOrgInstallation(installationId, org, [[admin1, "admin"], [admin2, "admin"]], [{ id: githubNumber() }]);
+    const a = await freshWorkspace();
+    const b = await freshWorkspace();
+    expect((await claim(a.uid, a.base, admin1, installationId)).status).toBe(200);
+
+    const res = await claim(b.uid, b.base, admin2, installationId);
+    expect(res.status).toBe(409);
+    expect(res.body).toEqual({ error: "installation_claimed" });
+    expect(await get(`INSTALLATION#${installationId}`, "META")).toMatchObject({ workspace_id: a.workspaceId });
+    // The transaction was cancelled as a whole: B's link and counters were not written.
+    expect(await itemsWith(`GHUSER#${admin2}`)).toEqual([]);
+    expect(await get(`WS#${b.workspaceId}`, "META")).not.toHaveProperty("github_user_id");
   });
 
   it("a GitHub user cannot claim someone else's personal installation", async () => {
@@ -235,6 +285,61 @@ describe("GitHub install and claim", () => {
   });
 });
 
+describe("organization installations", () => {
+  function orgInstallation(members: Array<[number, "admin" | "member"]>) {
+    const org = { id: githubNumber(), login: `org${githubNumber()}` };
+    const installationId = githubNumber();
+    const repoId = githubNumber();
+    app.github.addOrgInstallation(installationId, org, members, [{ id: repoId }]);
+    return { org, installationId, repoId };
+  }
+
+  async function claimAs(githubUserId: number, installationId: number) {
+    const uid = newUserId();
+    const ws = String((await call(app, uid, "POST", "/api/me/bootstrap")).body.workspaceId);
+    const base = `/api/workspaces/${ws}`;
+    const state = stateOf(await call(app, uid, "POST", `${base}/github/install-url`));
+    const res = await call(app, uid, "POST", `${base}/github/claim`, {
+      body: { code: app.github.code(githubUserId), installationId: String(installationId), state },
+    });
+    return { uid, ws, base, res };
+  }
+
+  it("an active organization admin claims the installation, verified through the membership check", async () => {
+    const admin = githubNumber();
+    const { org, installationId, repoId } = orgInstallation([[admin, "admin"]]);
+    const { uid, ws, base, res } = await claimAs(admin, installationId);
+    expect(res.status).toBe(200);
+    expect(res.body.installation).toMatchObject({ installationId: String(installationId), accountLogin: org.login, accountType: "Organization" });
+    expect(app.github.calls).toContain(`https://api.github.com/user/memberships/orgs/${org.login}`);
+    expect(await get(`INSTALLATION#${installationId}`, "META")).toMatchObject({
+      workspace_id: ws,
+      account_id: String(org.id),
+      account_type: "Organization",
+      claimed_by_github_user_id: String(admin),
+    });
+    // The workspace is linked to the admin's own GitHub account, not the organization.
+    expect(await get(`WS#${ws}`, "META")).toMatchObject({ github_user_id: String(admin) });
+    const listingId = String((res.body.listing as Record<string, unknown>).listingId);
+    expect((await call(app, uid, "POST", `${base}/repos`, { body: { listingId, repoId: String(repoId) } })).status).toBe(200);
+  });
+
+  it.each([
+    ["a non-admin organization member", "member" as const],
+    ["a user outside the organization", null],
+  ])("%s cannot claim: 403 not_installation_owner, nothing written", async (_label, role) => {
+    const admin = githubNumber();
+    const user = githubNumber();
+    const { installationId } = orgInstallation(role ? [[admin, "admin"], [user, role]] : [[admin, "admin"]]);
+    const { ws, res } = await claimAs(user, installationId);
+    expect(res.status).toBe(403);
+    expect(res.body).toEqual({ error: "not_installation_owner" });
+    expect(await itemsWith(`INSTALLATION#${installationId}`)).toEqual([]);
+    expect(await itemsWith(`GHUSER#${user}`)).toEqual([]);
+    expect(await get(`WS#${ws}`, "META")).not.toHaveProperty("github_user_id");
+  });
+});
+
 describe("repository listings", () => {
   it("refuses a listing over 1,000 repositories with 422 and stores nothing", async () => {
     const w = await onboard(app, newUserId());
@@ -262,15 +367,50 @@ describe("repository listings", () => {
     expect(((await get(`GHLISTING#${res.body.listingId}`, "META"))?.repos as unknown[]).length).toBe(1000);
   });
 
-  it("a workspace cannot list an installation it does not own", async () => {
+  async function listingFor(uid: string, base: string, githubUserId: number, installationId: number) {
+    const state = stateOf(await call(app, uid, "POST", `${base}/github/authorize-url`));
+    return call(app, uid, "POST", `${base}/github/repo-listing`, {
+      body: { code: app.github.code(githubUserId), installationId: String(installationId), state },
+    });
+  }
+
+  it("another workspace's installation the user cannot see on GitHub: 502 github_unavailable, nothing stored", async () => {
+    // GitHub answers 404 for an installation the user has no access to. The
+    // verification library treats every non-200 answer as "not verified" and
+    // reports it as github_unavailable, before any listing is saved.
     const a = await onboard(app, newUserId());
     const b = await onboard(app, newUserId());
-    const state = stateOf(await call(app, b.uid, "POST", `${b.base}/github/authorize-url`));
-    const res = await call(app, b.uid, "POST", `${b.base}/github/repo-listing`, {
-      body: { code: app.github.code(b.githubUserId), installationId: String(a.installationId), state },
-    });
-    expect(res.status).toBeGreaterThanOrEqual(400);
-    expect(await itemsWith("GHLISTING#").then((items) => items.filter((i) => i.workspace_id === b.workspaceId && i.installation_id === String(a.installationId)))).toEqual([]);
+    const res = await listingFor(b.uid, b.base, b.githubUserId, a.installationId);
+    expect(res.status).toBe(502);
+    expect(res.body).toEqual({ error: "github_unavailable" });
+    expect((await itemsWith("GHLISTING#")).filter((i) => i.installation_id === String(a.installationId) && i.workspace_id === b.workspaceId)).toEqual([]);
+  });
+
+  it("another workspace's installation the user can see on GitHub: 403 not_installation_owner, nothing stored", async () => {
+    // A second organization admin can list the repositories on GitHub, but the
+    // listing is refused because the installation belongs to another workspace.
+    const org = { id: githubNumber(), login: `org${githubNumber()}` };
+    const admin1 = githubNumber();
+    const admin2 = githubNumber();
+    const installationId = githubNumber();
+    app.github.addOrgInstallation(installationId, org, [[admin1, "admin"], [admin2, "admin"]], [{ id: githubNumber() }]);
+    const uidA = newUserId();
+    const wsA = String((await call(app, uidA, "POST", "/api/me/bootstrap")).body.workspaceId);
+    const stateA = stateOf(await call(app, uidA, "POST", `/api/workspaces/${wsA}/github/install-url`));
+    expect(
+      (
+        await call(app, uidA, "POST", `/api/workspaces/${wsA}/github/claim`, {
+          body: { code: app.github.code(admin1), installationId: String(installationId), state: stateA },
+        })
+      ).status,
+    ).toBe(200);
+
+    const uidB = newUserId();
+    const wsB = String((await call(app, uidB, "POST", "/api/me/bootstrap")).body.workspaceId);
+    const res = await listingFor(uidB, `/api/workspaces/${wsB}`, admin2, installationId);
+    expect(res.status).toBe(403);
+    expect(res.body).toEqual({ error: "not_installation_owner" });
+    expect((await itemsWith("GHLISTING#")).filter((i) => i.workspace_id === wsB)).toEqual([]);
   });
 });
 

@@ -9,6 +9,7 @@
  */
 
 import type { APIGatewayProxyEventV2 } from "aws-lambda";
+import { SSMClient } from "@aws-sdk/client-ssm";
 import { SignJWT, createLocalJWKSet, exportJWK, generateKeyPair, type CryptoKey, type JWTVerifyGetKey } from "jose";
 import type { DashboardEnv } from "../../../src/config/env";
 import type { GitHubTransport } from "../../../src/contracts";
@@ -35,12 +36,15 @@ interface FakeInstallation {
   type: "User" | "Organization";
   accountId: number;
   login: string;
+  /** Organization installations: users whose membership is active, with their role. */
+  orgMembers?: Map<number, "admin" | "member">;
 }
 
 /**
  * Minimal GitHub: OAuth codes are single use and map to one GitHub user;
  * `/user/installations` lists every installation (the verification library
- * decides ownership); repositories are per installation.
+ * decides ownership); repositories are per installation and visible to the
+ * personal owner or to organization members, as on GitHub.
  */
 export class FakeGitHub {
   readonly calls: string[] = [];
@@ -68,6 +72,23 @@ export class FakeGitHub {
       id,
       repos.map((r) => ({ id: r.id, full_name: `user${userId}/repo-${r.id}`, admin: r.admin ?? true })),
     );
+  }
+
+  addOrgInstallation(
+    id: number,
+    org: { id: number; login: string },
+    members: Array<[userId: number, role: "admin" | "member"]>,
+    repos: Array<{ id: number; admin?: boolean }>,
+  ): void {
+    this.installations.push({ id, appId: Number(APP_ID), type: "Organization", accountId: org.id, login: org.login, orgMembers: new Map(members) });
+    this.repos.set(
+      id,
+      repos.map((r) => ({ id: r.id, full_name: `${org.login}/repo-${r.id}`, admin: r.admin ?? true })),
+    );
+  }
+
+  private canSee(installation: FakeInstallation, userId: number): boolean {
+    return installation.type === "User" ? installation.accountId === userId : installation.orgMembers?.has(userId) === true;
   }
 
   readonly transport: GitHubTransport = {
@@ -105,7 +126,7 @@ export class FakeGitHub {
         if (failure) return respond(failure, {});
         const all = this.repos.get(Number(m[1]));
         const installation = this.installations.find((i) => i.id === Number(m[1]));
-        if (!all || !installation || installation.accountId !== user.userId) return respond(404, {});
+        if (!all || !installation || !this.canSee(installation, user.userId)) return respond(404, {});
         const page = Number(new URLSearchParams(query).get("page") ?? "1");
         const items = all.slice((page - 1) * 100, page * 100).map((r) => ({
           id: r.id,
@@ -113,6 +134,13 @@ export class FakeGitHub {
           permissions: { admin: r.admin },
         }));
         return respond(200, { total_count: this.reportedRepoCount ?? all.length, repositories: items });
+      }
+      const membership = /^https:\/\/api\.github\.com\/user\/memberships\/orgs\/([^/]+)$/.exec(path);
+      if (membership) {
+        const org = this.installations.find((i) => i.type === "Organization" && i.login === decodeURIComponent(membership[1]));
+        const role = org?.orgMembers?.get(user.userId);
+        if (!org || !role) return respond(404, {});
+        return respond(200, { state: "active", role, organization: { id: org.accountId, login: org.login } });
       }
       return respond(404, {});
     },
@@ -206,18 +234,35 @@ export async function call(
   return { status: res.statusCode ?? 0, body: raw ? JSON.parse(raw) : {}, headers: (res.headers ?? {}) as Record<string, string>, raw };
 }
 
-/** Captures log lines for leak assertions; `fetch` is replaced so no request can leave the machine. */
-export function captureLogsAndBlockNetwork(): { lines: string[] } {
+/**
+ * Captures log lines for leak assertions and blocks every way the code under
+ * test could reach a real service:
+ * - `fetch` (GitHub transport, Logto JWKS, Discord, Octokit) throws;
+ * - every SSM client call throws, so a missed fake can never touch Parameter Store.
+ * DynamoDB is already pinned to the local endpoint by `setup-env.ts`.
+ */
+export function captureLogsAndBlockNetwork(): { lines: string[]; fetch: () => jest.Mock; ssm: () => jest.SpyInstance } {
   const captured = { lines: [] as string[] };
+  let fetchMock: jest.Mock;
+  let ssmSpy: jest.SpyInstance;
   beforeEach(() => {
     captured.lines.length = 0;
     jest.spyOn(console, "log").mockImplementation((line: string) => void captured.lines.push(String(line)));
-    global.fetch = jest.fn(async () => {
+    fetchMock = jest.fn(async () => {
       throw new Error("network access is not allowed in DynamoDB Local suites");
-    }) as unknown as typeof fetch;
+    });
+    global.fetch = fetchMock as unknown as typeof fetch;
+    ssmSpy = jest.spyOn(SSMClient.prototype, "send").mockImplementation(async () => {
+      throw new Error("SSM access is not allowed in DynamoDB Local suites");
+    });
   });
-  afterEach(() => jest.restoreAllMocks());
-  return captured;
+  afterEach(() => {
+    // Every test must have stayed local.
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(ssmSpy).not.toHaveBeenCalled();
+    jest.restoreAllMocks();
+  });
+  return { lines: captured.lines, fetch: () => fetchMock, ssm: () => ssmSpy };
 }
 
 /** The `state` query parameter of a GitHub redirect URL returned by the API. */

@@ -122,7 +122,7 @@ describe("per-user rate limits", () => {
   /** Waits for a fresh window if the current one is about to end, so the test cannot straddle two windows. */
   async function freshWindow(): Promise<void> {
     const { retryAfterSeconds } = windowOf(Date.now());
-    if (retryAfterSeconds < 10) await new Promise((r) => setTimeout(r, retryAfterSeconds * 1000 + 200));
+    if (retryAfterSeconds < 25) await new Promise((r) => setTimeout(r, retryAfterSeconds * 1000 + 200));
   }
 
   it(`allows ${RATE_LIMITS.bootstrap} bootstrap calls per minute, then answers 429 with Retry-After`, async () => {
