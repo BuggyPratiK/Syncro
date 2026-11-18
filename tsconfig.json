@@ -2,6 +2,9 @@
   "compilerOptions": {
     "target": "ES2022",
     "module": "commonjs",
+    // Explicit: the Lambda code is bundled by esbuild, and TypeScript 6 no
+    // longer supports the old Node 10 resolution that used to be the default.
+    "moduleResolution": "bundler",
     "lib": ["ES2022"],
     "types": ["node"],
     "outDir": "./dist",
