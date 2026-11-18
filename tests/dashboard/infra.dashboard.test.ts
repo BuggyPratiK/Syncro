@@ -6,7 +6,8 @@
  * Model under test (stored Discord webhook URLs in SSM):
  *   dashboard: put destination parameters; never read them; read only its own OAuth secret
  *   sender:    read destination parameters and its two secrets; never write
- *   neither:   KMS statements or a customer-managed key
+ *   neither:   a KMS Allow or a customer-managed key; the dashboard has one KMS
+ *              Deny that blocks decrypting destination parameters
  */
 
 import * as cdk from "aws-cdk-lib";
@@ -16,7 +17,9 @@ import {
   DASHBOARD_DESTINATION_PARAM_PATTERN,
   DASHBOARD_DYNAMODB_ACTIONS,
   DASHBOARD_PARAMS,
+  DASHBOARD_ROUTES,
 } from "../../infra/lib/dashboard";
+import { ROUTES } from "../../src/contracts/routes";
 import { dashboardParamNames, deriveDestinationParamName } from "../../src/secrets/param-names";
 import { dashboardEnvSchema, parseDashboardEnv } from "../../src/config/env";
 import { SECRET_VALUE_PATTERNS } from "../../scripts/check-deploy-env-allowlist";
@@ -185,6 +188,175 @@ describe("dashboard role", () => {
     expect(() => parseDashboardEnv(asStrings)).not.toThrow();
     const json = JSON.stringify(env);
     for (const p of SECRET_VALUE_PATTERNS) expect(json).not.toMatch(p);
+  });
+});
+
+describe("dashboard KMS decrypt deny", () => {
+  const template = synth({ dashboard: DASHBOARD_CONFIG });
+  const statements = statementsOf(template, roleId(template, "DashboardRole"));
+  const kms = statements.filter((s) => actionsOf(s).some((a) => a.toLowerCase().startsWith("kms:")));
+  const CONTEXT_KEY = "kms:EncryptionContext:PARAMETER_ARN";
+
+  /** IAM `StringLike`: `*` matches any run of characters (including `/`), `?` one character. */
+  function stringLike(pattern: string, value: string): boolean {
+    const escaped = pattern.replace(/[.+^${}()|[\]\\]/g, "\\$&").replace(/\*/g, ".*").replace(/\?/g, ".");
+    return new RegExp(`^${escaped}$`).test(value);
+  }
+
+  /** The deny's condition pattern, with the partition token resolved as in the commercial partition. */
+  const denyPattern = () => {
+    const condition = kms[0].Condition as { StringLike: Record<string, unknown> };
+    return arnText(condition.StringLike[CONTEXT_KEY]).replace("<ref>", "aws");
+  };
+  const parameterArn = (name: string, region = "ap-southeast-2", account = "123456789012") =>
+    `arn:aws:ssm:${region}:${account}:parameter${name}`;
+  const destinationName = deriveDestinationParamName(
+    "ws_11111111-1111-4111-8111-111111111111",
+    "8c0e6f1a-2b3c-4d5e-8f90-a1b2c3d4e5f6",
+    "/syncro/prod",
+  );
+
+  it("is the role's only KMS statement: a Deny on kms:Decrypt alone, scoped to this account's keys", () => {
+    expect(kms).toHaveLength(1);
+    expect(kms[0].Effect).toBe("Deny");
+    expect(actionsOf(kms[0])).toEqual(["kms:Decrypt"]);
+    expect(resourcesOf(kms[0]).map(arnText)).toEqual(["arn:<ref>:kms:ap-southeast-2:123456789012:key/*"]);
+    expect(Object.keys(kms[0].Condition as object)).toEqual(["StringLike"]);
+    expect(Object.keys((kms[0].Condition as { StringLike: object }).StringLike)).toEqual([CONTEXT_KEY]);
+  });
+
+  it("denies decrypting a destination parameter through Parameter Store", () => {
+    expect(stringLike(denyPattern(), parameterArn(destinationName))).toBe(true);
+  });
+
+  it("does not catch the OAuth client secret or the sender's secrets", () => {
+    expect(stringLike(denyPattern(), parameterArn(DASHBOARD_PARAMS.githubOAuthClientSecret))).toBe(false);
+    expect(stringLike(denyPattern(), parameterArn("/syncro/prod/sender/github-app-private-key"))).toBe(false);
+    expect(stringLike(denyPattern(), parameterArn("/syncro/prod/sender/github-webhook-secret"))).toBe(false);
+  });
+
+  it("does not catch unrelated encryption contexts", () => {
+    for (const value of [
+      parameterArn("/syncro/prod/ws/a/dest/b/other-secret"),
+      parameterArn("/syncro/staging/ws/a/dest/b/discord-webhook-url"),
+      parameterArn(destinationName, "us-east-1"),
+      parameterArn(destinationName, "ap-southeast-2", "210987654321"),
+      "arn:aws:secretsmanager:ap-southeast-2:123456789012:secret:discord-webhook-url",
+      "",
+    ]) {
+      expect(stringLike(denyPattern(), value)).toBe(false);
+    }
+  });
+
+  it("leaves encryption for writes untouched and grants no KMS permission", () => {
+    const kmsActions = kms.flatMap(actionsOf);
+    for (const a of ["kms:Encrypt", "kms:GenerateDataKey", "kms:GenerateDataKey*", "kms:ReEncrypt*", "kms:*", "*"]) {
+      expect(kmsActions).not.toContain(a);
+    }
+    expect(statements.filter((s) => s.Effect === "Allow").flatMap(actionsOf).filter((a) => /^kms:/i.test(a))).toEqual([]);
+  });
+});
+
+describe("dashboard HTTP API", () => {
+  const template = synth({ dashboard: DASHBOARD_CONFIG });
+  const routeKeys = DASHBOARD_ROUTES.map((r) => `${r.method} ${r.path}`);
+  const THROTTLED = [
+    "POST /api/me/bootstrap",
+    "POST /api/workspaces/{workspaceId}/github/install-url",
+    "POST /api/workspaces/{workspaceId}/github/claim",
+    "POST /api/workspaces/{workspaceId}/github/authorize-url",
+    "POST /api/workspaces/{workspaceId}/github/repo-listing",
+    "POST /api/workspaces/{workspaceId}/destinations",
+    "PATCH /api/workspaces/{workspaceId}/destinations/{destinationId}",
+    "PUT /api/workspaces/{workspaceId}/destinations/{destinationId}/webhook",
+  ];
+
+  type StageProps = {
+    StageName: string;
+    AutoDeploy: boolean;
+    DefaultRouteSettings: Record<string, unknown>;
+    RouteSettings: Record<string, Record<string, unknown>>;
+  };
+  const stages = () =>
+    Object.values(template.findResources("AWS::ApiGatewayV2::Stage")) as Array<{ Properties: StageProps; DependsOn?: string[] }>;
+
+  it("is a separate HTTP API next to the unchanged webhook REST API", () => {
+    template.resourceCountIs("AWS::ApiGatewayV2::Api", 1);
+    template.resourceCountIs("AWS::ApiGateway::RestApi", 1);
+    template.hasResourceProperties("AWS::ApiGatewayV2::Api", { Name: "syncro-dashboard-api", ProtocolType: "HTTP" });
+  });
+
+  it("allows CORS only from the dashboard origin, without credentials", () => {
+    const api = Object.values(template.findResources("AWS::ApiGatewayV2::Api"))[0] as {
+      Properties: { CorsConfiguration: unknown };
+    };
+    expect(api.Properties.CorsConfiguration).toEqual({
+      AllowOrigins: ["https://syncro.vercel.app"],
+      AllowCredentials: false,
+      AllowHeaders: ["authorization", "content-type"],
+      AllowMethods: ["GET", "POST", "PATCH", "PUT"],
+      ExposeHeaders: ["retry-after"],
+      MaxAge: 600,
+    });
+  });
+
+  it("exposes exactly the 15 dashboard routes and no catch-all", () => {
+    const keys = Object.values(template.findResources("AWS::ApiGatewayV2::Route")).map(
+      (r) => (r as { Properties: { RouteKey: string } }).Properties.RouteKey,
+    );
+    expect(keys.sort()).toEqual([...routeKeys].sort());
+    expect(keys).toHaveLength(15);
+    expect(keys.some((k) => k === "$default" || k.startsWith("ANY ") || k.includes("{proxy+}"))).toBe(false);
+  });
+
+  it("sends every route to the dashboard function with payload format 2.0", () => {
+    template.resourceCountIs("AWS::ApiGatewayV2::Integration", 1);
+    template.hasResourceProperties("AWS::ApiGatewayV2::Integration", {
+      IntegrationType: "AWS_PROXY",
+      PayloadFormatVersion: "2.0",
+    });
+  });
+
+  it("lets only this HTTP API invoke the dashboard function", () => {
+    const perms = Object.values(template.findResources("AWS::Lambda::Permission")) as Array<{
+      Properties: { FunctionName: unknown; Principal: string; SourceArn: unknown };
+    }>;
+    const dashboard = perms.filter((p) => JSON.stringify(p.Properties.FunctionName).includes("Dashboard"));
+    expect(dashboard).toHaveLength(15);
+    for (const p of dashboard) {
+      expect(p.Properties.Principal).toBe("apigateway.amazonaws.com");
+      expect(JSON.stringify(p.Properties.SourceArn)).toContain("DashboardHttpApi");
+      expect(JSON.stringify(p.Properties.SourceArn)).not.toContain("SyncroApi");
+    }
+  });
+
+  it("throttles the whole stage at 20 requests per second with a burst of 40", () => {
+    const all = stages();
+    expect(all).toHaveLength(1);
+    expect(all[0].Properties.StageName).toBe("$default");
+    expect(all[0].Properties.AutoDeploy).toBe(true);
+    expect(all[0].Properties.DefaultRouteSettings).toEqual({ ThrottlingRateLimit: 20, ThrottlingBurstLimit: 40 });
+  });
+
+  it("throttles each expensive route at 2 requests per second with a burst of 5", () => {
+    const settings = stages()[0].Properties.RouteSettings;
+    expect(Object.keys(settings).sort()).toEqual([...THROTTLED].sort());
+    for (const key of THROTTLED) {
+      expect(settings[key]).toEqual({ ThrottlingRateLimit: 2, ThrottlingBurstLimit: 5 });
+      expect(routeKeys).toContain(key);
+    }
+  });
+
+  it("creates the stage after the routes its settings name", () => {
+    const routeIds = Object.keys(template.findResources("AWS::ApiGatewayV2::Route"));
+    const dependsOn = stages()[0].DependsOn ?? [];
+    for (const id of routeIds) expect(dependsOn).toContain(id);
+  });
+
+  it("matches the application's route table", () => {
+    expect(DASHBOARD_ROUTES.map((r) => ({ method: r.method, path: r.path, routeThrottle: r.routeThrottle }))).toEqual(
+      ROUTES.map((r) => ({ method: r.method, path: r.path, routeThrottle: r.routeThrottle })),
+    );
   });
 });
 
