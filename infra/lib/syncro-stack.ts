@@ -17,6 +17,7 @@ import * as lambdaNodejs from "aws-cdk-lib/aws-lambda-nodejs";
 import * as apigateway from "aws-cdk-lib/aws-apigateway";
 import * as logs from "aws-cdk-lib/aws-logs";
 import { Construct } from "constructs";
+import { DashboardApi, type DashboardApiProps } from "./dashboard";
 
 /** SSM parameter namespace for production secrets. */
 export const SSM_PARAM_PREFIX = "/syncro/prod";
@@ -36,10 +37,12 @@ export interface SyncroStackProps extends cdk.StackProps {
   logLevel?: "debug" | "info" | "warn" | "error";
   /** Changing this value replaces running containers so they re-read secrets after a rotation. */
   secretsEpoch?: string;
+  /** Dashboard API settings. Absent = dashboard disabled: no dashboard resources are created. */
+  dashboard?: Omit<DashboardApiProps, "table" | "githubAppId" | "logLevel" | "secretsEpoch">;
 }
 
 export class SyncroStack extends cdk.Stack {
-  /** The single table, exposed so a later dashboard construct can be granted access to it. */
+  /** The single table, shared with the dashboard construct. */
   public readonly table: dynamodb.Table;
 
   constructor(scope: Construct, id: string, props: SyncroStackProps) {
@@ -162,6 +165,16 @@ export class SyncroStack extends cdk.Stack {
     // GET /health
     const health = api.root.addResource("health");
     health.addMethod("GET", lambdaIntegration);
+
+    if (props.dashboard) {
+      new DashboardApi(this, "Dashboard", {
+        ...props.dashboard,
+        table,
+        githubAppId: props.githubAppId,
+        logLevel: props.logLevel,
+        secretsEpoch: props.secretsEpoch,
+      });
+    }
 
     // Stack Outputs
     new cdk.CfnOutput(this, "WebhookUrl", {
