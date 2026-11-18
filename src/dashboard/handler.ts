@@ -3,8 +3,7 @@
  *
  * Configuration is validated on the first request and cached for the
  * container; invalid configuration fails every request closed (500).
- * Default deny: no route handlers are registered yet, so every request is
- * answered 404 `not_found`, exactly like an unknown route.
+ * Every request goes through the shared pipeline; there is no other way in.
  */
 
 import { getDashboardEnv } from "../config/env";
@@ -12,6 +11,8 @@ import { resolveWorkspaceContext } from "../tenancy/context";
 import { consumeRateLimit } from "../ratelimit/rate-limit";
 import { createAuthenticator } from "./auth";
 import { createDashboardHandler, type PipelineDeps } from "./pipeline";
+import { createRouteHandlers } from "./routes";
+import { productionServices } from "./routes/services";
 
 let deps: PipelineDeps | undefined;
 
@@ -27,7 +28,7 @@ function getDeps(): PipelineDeps {
       }),
       resolveWorkspaceContext,
       consumeRateLimit: (userId, bucket) => consumeRateLimit(userId, bucket),
-      handlers: {},
+      handlers: createRouteHandlers(productionServices(env)),
     };
   }
   return deps;

@@ -166,7 +166,7 @@ describe("route registry", () => {
     expect(ok.statusCode).toBe(200);
   });
 
-  it("deploys with no handlers yet: every route is 404, and invalid configuration is 500", async () => {
+  it("deployed entry point: invalid configuration is 500, and every route requires a token", async () => {
     const saved = { ...process.env };
     try {
       resetEnvCacheForTests();
@@ -184,10 +184,12 @@ describe("route registry", () => {
       });
       resetEnvCacheForTests();
       for (const r of ROUTES) {
-        const res = (await lambdaHandler(sampleEvent(r.id))) as { statusCode: number; body?: string };
-        expect(res.statusCode).toBe(404);
-        expect(bodyOf(res)).toEqual({ error: "not_found" });
+        const res = (await lambdaHandler(sampleEvent(r.id, { auth: null }))) as { statusCode: number; body?: string };
+        expect(res.statusCode).toBe(401);
+        expect(bodyOf(res)).toEqual({ error: "unauthenticated" });
       }
+      const unknown = (await lambdaHandler(event("GET", "/api/unknown"))) as { statusCode: number };
+      expect(unknown.statusCode).toBe(404);
     } finally {
       process.env = saved;
       resetEnvCacheForTests();
