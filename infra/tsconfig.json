@@ -1,0 +1,5 @@
+{
+  // Lets editors find the infrastructure settings for files under infra/.
+  // The build and CDK use ../tsconfig.infra.json directly.
+  "extends": "../tsconfig.infra.json"
+}

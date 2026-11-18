@@ -28,7 +28,9 @@ yarn-error.log*
 # OS and IDE files
 .DS_Store
 Thumbs.db
-.vscode/
+# Shared editor settings are committed; personal VS Code files stay ignored.
+.vscode/*
+!.vscode/settings.json
 .idea/
 
 # Local credentials & scratch

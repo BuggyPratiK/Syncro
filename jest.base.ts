@@ -16,7 +16,7 @@ export const baseConfig: Config = {
   preset: "ts-jest",
   testEnvironment: "node",
   transform: {
-    "^.+\\.tsx?$": ["ts-jest", { tsconfig: "tsconfig.json" }],
+    "^.+\\.tsx?$": ["ts-jest", { tsconfig: "tests/tsconfig.json" }],
     // Transpile-only (no type checking) for the ESM packages' JavaScript.
     [`[\\\\/]node_modules[\\\\/](${ESM_PACKAGES.join("|")})[\\\\/].+\\.js$`]: [
       "ts-jest",
