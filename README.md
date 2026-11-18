@@ -24,14 +24,14 @@ Syncro runs 100% serverless across permanent AWS Always-Free tier services:
 ```mermaid
 flowchart TD
     subgraph GitHub["GitHub"]
-        GH_REPO["📦 Monitored Repository"]
-        OCTOKIT["🐙 GitHub REST API"]
+        GH_REPO["Monitored Repository"]
+        OCTOKIT["GitHub REST API"]
     end
 
     subgraph AWS["AWS Serverless Architecture (Always-Free Tier)"]
-        APIGW["🚪 Amazon API Gateway<br/>/v1/webhooks/github"]
-        LAMBDA["⚡ AWS Lambda<br/>Node.js 24 + TypeScript"]
-        DDB[("🗄️ Amazon DynamoDB<br/>Single-Table Design")]
+        APIGW["Amazon API Gateway<br/>/v1/webhooks/github"]
+        LAMBDA["AWS Lambda<br/>Node.js 24 + TypeScript"]
+        DDB[("Amazon DynamoDB<br/>Single-Table Design")]
 
         subgraph Execution["Pipeline Flow"]
             SEC["1. HMAC-SHA256 Security Check<br/>timingSafeEqual"]
@@ -44,7 +44,7 @@ flowchart TD
     end
 
     subgraph Destination["Notifications"]
-        DISCORD["💬 Discord Webhook Channel<br/>Push & PR Rich Embeds"]
+        DISCORD["Discord Webhook Channel<br/>Push & PR Rich Embeds"]
     end
 
     GH_REPO -->|"Webhook (Push / PR)"| APIGW
