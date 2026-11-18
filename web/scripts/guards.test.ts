@@ -8,7 +8,7 @@ import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "nod
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { ESLint } from "eslint";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, beforeAll, describe, expect, it } from "vitest";
 import { scan } from "./check-bundle.mjs";
 import { checkVercelConfig, parseCsp } from "./check-deploy-config.mjs";
 
@@ -52,6 +52,13 @@ describe("backend import rule", () => {
     const [result] = await eslint.lintText(code, { filePath: join(import.meta.dirname, "..", "src", "pages", "x.ts") });
     return result.messages.map((m) => m.ruleId ?? m.message);
   }
+
+  // The first lint loads the config and parser, which is slow on some file
+  // systems (for example a Windows drive mounted in WSL). Pay that cost once
+  // here so each case below keeps the default per-test timeout.
+  beforeAll(async () => {
+    await messages("export {};");
+  }, 60_000);
 
   it.each([
     'import { ddb } from "../../../src/db/client";',
