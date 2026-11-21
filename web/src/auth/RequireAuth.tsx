@@ -33,7 +33,7 @@ export function SignInPage() {
   const auth = useAuth();
   return (
     <PlainLayout>
-      <section className="max-w-[620px]">
+      <section className="max-w-155">
         {auth.sessionEnded ? (
           <p role="status" className="mb-6 border-y border-ru py-2.5 text-[13px] text-mu">
             Your session has ended. Sign in again to continue.

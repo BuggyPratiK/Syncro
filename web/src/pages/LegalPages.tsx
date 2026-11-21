@@ -24,7 +24,7 @@ function LegalSection({ title }: { title: string }) {
 export function PrivacyPage() {
   return (
     <PlainLayout>
-      <article className="max-w-[620px]">
+      <article className="max-w-155">
         <p className="label">Legal</p>
         <h1 className="font-serif text-[38px] leading-tight">Privacy notice</h1>
         <div className="mt-6 border-t border-ink">
@@ -41,7 +41,7 @@ export function PrivacyPage() {
 export function TermsPage() {
   return (
     <PlainLayout>
-      <article className="max-w-[620px]">
+      <article className="max-w-155">
         <p className="label">Legal</p>
         <h1 className="font-serif text-[38px] leading-tight">Terms of use</h1>
         <div className="mt-6 border-t border-ink">

@@ -67,7 +67,7 @@ export function DestinationsPage() {
   const addForm = adding ? (
     <section className="mb-10 border-t border-ink pt-4">
       <h2 className="mb-4 font-serif text-[22px]">New Discord destination</h2>
-      <div className="max-w-[620px]">
+      <div className="max-w-155">
         <DestinationForm
           workspaceId={workspaceId}
           activeCount={activeCount}
@@ -335,7 +335,7 @@ function RenameForm({
   }
 
   return (
-    <form onSubmit={submit} className="mt-4 flex max-w-[620px] flex-col gap-4 border-l-[3px] border-l-ac bg-sf p-4">
+    <form onSubmit={submit} className="mt-4 flex max-w-155 flex-col gap-4 border-l-3 border-l-ac bg-sf p-4">
       <Field label="Name" htmlFor={id}>
         <input
           id={id}
@@ -395,7 +395,7 @@ function ReplaceUrlForm({
   }
 
   return (
-    <form onSubmit={submit} className="mt-4 flex max-w-[620px] flex-col gap-4 border-l-[3px] border-l-ac bg-sf p-4" autoComplete="off">
+    <form onSubmit={submit} className="mt-4 flex max-w-155 flex-col gap-4 border-l-3 border-l-ac bg-sf p-4" autoComplete="off">
       <div>
         <p className="label">Current URL</p>
         <p className="break-all font-mono text-[12px]">{destination.webhookUrlMasked}</p>

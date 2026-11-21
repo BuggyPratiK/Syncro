@@ -62,7 +62,7 @@ export function LegalLinks() {
 export function Shell({ children }: { children: ReactNode }) {
   return (
     <div className="min-h-screen lg:flex">
-      <aside className="hidden shrink-0 flex-col justify-between border-r border-ru px-[18px] py-6 lg:flex lg:w-[176px] xl:w-[220px] xl:px-6 xl:py-7">
+      <aside className="hidden shrink-0 flex-col justify-between border-r border-ru px-4.5 py-6 lg:flex lg:w-44 xl:w-55 xl:px-6 xl:py-7">
         <div>
           <Link to={PATHS.repositories} aria-label="Syncro home">
             <Wordmark />
@@ -89,7 +89,7 @@ export function Shell({ children }: { children: ReactNode }) {
             <Wordmark compact />
           </Link>
         </div>
-        <main className="flex-1 px-5 pb-28 pt-5 sm:px-7 lg:px-7 lg:pb-10 lg:pt-6 xl:px-10 xl:pt-[30px]">
+        <main className="flex-1 px-5 pb-28 pt-5 sm:px-7 lg:px-7 lg:pb-10 lg:pt-6 xl:px-10 xl:pt-7.5">
           {children}
         </main>
       </div>
@@ -103,7 +103,7 @@ export function Shell({ children }: { children: ReactNode }) {
             key={item.to}
             to={item.to}
             className={({ isActive }) =>
-              `flex min-h-[52px] flex-col items-center justify-center border-t-2 text-[11px] ${
+              `flex min-h-13 flex-col items-center justify-center border-t-2 text-[11px] ${
                 isActive ? "border-ac text-ac font-semibold" : "border-transparent text-ink"
               }`
             }
@@ -120,7 +120,7 @@ export function Shell({ children }: { children: ReactNode }) {
 /** Minimal layout for pages outside the signed-in app (sign-in, legal, callbacks). */
 export function PlainLayout({ children }: { children: ReactNode }) {
   return (
-    <div className="mx-auto flex min-h-screen max-w-[980px] flex-col px-5 py-6 sm:px-10">
+    <div className="mx-auto flex min-h-screen max-w-245 flex-col px-5 py-6 sm:px-10">
       <header className="border-b border-ink pb-4">
         <Link to={PATHS.home} aria-label="Syncro home">
           <Wordmark />

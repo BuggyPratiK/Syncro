@@ -112,7 +112,7 @@ function Steps({ workspaceId }: { workspaceId: string }) {
       <div className="mb-8 flex flex-col gap-3">
         <div className="flex gap-1" aria-hidden="true">
           {steps.map((s, i) => (
-            <span key={s.n} className={`h-[3px] flex-1 ${s.done ? "bg-ink" : i === shown ? "bg-ac" : "bg-ru"}`} />
+            <span key={s.n} className={`h-0.75 flex-1 ${s.done ? "bg-ink" : i === shown ? "bg-ac" : "bg-ru"}`} />
           ))}
         </div>
         <p className="text-[13px] text-mu">
@@ -121,7 +121,7 @@ function Steps({ workspaceId }: { workspaceId: string }) {
       </div>
 
       <div className="flex flex-col gap-10 lg:flex-row lg:gap-16">
-        <ol className="lg:w-[330px] lg:shrink-0" aria-label="Setup steps">
+        <ol className="lg:w-82.5 lg:shrink-0" aria-label="Setup steps">
           {steps.map((s, i) => (
             <li key={s.n} className="border-b border-ru">
               <button
@@ -139,7 +139,7 @@ function Steps({ workspaceId }: { workspaceId: string }) {
           ))}
         </ol>
 
-        <section className="min-w-0 max-w-[620px] flex-1">
+        <section className="min-w-0 max-w-155 flex-1">
           {complete && viewing === null ? (
             <Complete />
           ) : (

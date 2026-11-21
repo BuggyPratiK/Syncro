@@ -154,7 +154,7 @@ function ListingChooser({
             const result = results[repo.repoId];
             return (
               <li key={repo.repoId} className="border-b border-ru py-2.75">
-                <label className={`flex min-h-[28px] items-center gap-3 ${disabled ? "text-mu" : ""}`}>
+                <label className={`flex min-h-7 items-center gap-3 ${disabled ? "text-mu" : ""}`}>
                   <input
                     type="checkbox"
                     checked={added || selected.has(repo.repoId)}

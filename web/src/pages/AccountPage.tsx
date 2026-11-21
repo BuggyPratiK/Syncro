@@ -7,7 +7,7 @@ export function AccountPage() {
   return (
     <Shell>
       <PageHeader kicker="04" title="Account" />
-      <section className="max-w-[620px] border-t border-ink pt-4">
+      <section className="max-w-155 border-t border-ink pt-4">
         <p className="text-mu">Sign out of Syncro on this browser.</p>
         <div className="mt-4">
           {/* Cached data needs no clearing: sign-out leaves the page, which drops it. */}

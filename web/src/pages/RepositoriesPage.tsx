@@ -125,7 +125,7 @@ export function RepositoriesPage() {
                     key={repo.repoId}
                     className={`border-b border-ru align-top ${isSelected ? "bg-sf" : ""}`}
                   >
-                    <td className={`border-l-[3px] py-2.75 pl-3 pr-3 ${isSelected ? "border-l-ac" : "border-l-transparent"}`}>
+                    <td className={`border-l-3 py-2.75 pl-3 pr-3 ${isSelected ? "border-l-ac" : "border-l-transparent"}`}>
                       <span className="block truncate font-mono text-[12px]">{repo.fullName}</span>
                       <span className="mt-1 block sm:hidden">
                         <StatusMark {...status} />
@@ -141,7 +141,7 @@ export function RepositoriesPage() {
                     <td className="py-2.75 text-right">
                       <button
                         type="button"
-                        className="text-action inline-flex min-h-[44px] items-center sm:min-h-0"
+                        className="text-action inline-flex min-h-11 items-center sm:min-h-0"
                         onClick={() => setSelectedId(isSelected ? null : repo.repoId)}
                         aria-expanded={isSelected}
                       >
@@ -238,7 +238,7 @@ function EditPanel({
 
   return (
     <aside
-      className="fixed inset-0 z-50 overflow-y-auto bg-bg px-5 py-6 sm:static sm:z-auto sm:w-[320px] sm:shrink-0 sm:border-l sm:border-ru sm:bg-transparent sm:py-0 sm:pl-7 sm:pr-0 xl:w-[340px]"
+      className="fixed inset-0 z-50 overflow-y-auto bg-bg px-5 py-6 sm:static sm:z-auto sm:w-80 sm:shrink-0 sm:border-l sm:border-ru sm:bg-transparent sm:py-0 sm:pl-7 sm:pr-0 xl:w-85"
       aria-label={`Edit ${repo.fullName}`}
     >
       <form onSubmit={save} className="flex flex-col gap-5">

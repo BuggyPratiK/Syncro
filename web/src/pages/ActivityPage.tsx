@@ -139,7 +139,7 @@ function DeliveryRow({ delivery, open, onToggle }: { delivery: DeliveryDto; open
       {open ? (
         <dl
           id={detailsId}
-          className={`mb-3 grid grid-cols-[120px_1fr] gap-x-4 gap-y-1.5 border-l-[3px] bg-sf px-4 py-3 text-[13px] ${
+          className={`mb-3 grid grid-cols-[120px_1fr] gap-x-4 gap-y-1.5 border-l-3 bg-sf px-4 py-3 text-[13px] ${
             delivery.status === "failed" ? "border-l-er" : "border-l-ok"
           }`}
         >

@@ -20,7 +20,7 @@ export function AddRepositoriesPage() {
           </Link>
         }
       />
-      <div className="max-w-[720px]">
+      <div className="max-w-180">
         {canWrite ? (
           <RepoPicker workspaceId={workspaceId} onDone={() => navigate(PATHS.repositories)} />
         ) : (

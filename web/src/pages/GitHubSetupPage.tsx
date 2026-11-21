@@ -113,7 +113,7 @@ export function GitHubSetupPage() {
 
   return (
     <PlainLayout>
-      <section className="max-w-[620px]">
+      <section className="max-w-155">
         <p className="label">GitHub</p>
         <h1 className="font-serif text-[38px] leading-tight">Connecting GitHub</h1>
         <div className="mt-6">
