@@ -75,6 +75,7 @@ jobs:
           DDB_LOCAL_ENDPOINT: http://localhost:8000
 
   web:
+    # This job name is a required status check on main; keep it unchanged.
     name: Web dashboard
     runs-on: ubuntu-latest
     defaults:
