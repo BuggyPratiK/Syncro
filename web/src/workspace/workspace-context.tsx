@@ -2,6 +2,7 @@ import { roleSatisfies, type WorkspaceMembershipDto } from "@contracts";
 import { createContext, useContext, type ReactNode } from "react";
 import { Navigate } from "react-router";
 import { useMe } from "../api/queries";
+import { PlainLayout } from "../components/Shell";
 import { ErrorLine, LoadingRows } from "../components/ui";
 import { PATHS } from "../paths";
 
@@ -13,8 +14,20 @@ const WorkspaceContext = createContext<WorkspaceMembershipDto | null>(null);
  */
 export function WorkspaceGate({ children }: { children: ReactNode }) {
   const me = useMe();
-  if (me.isPending) return <LoadingRows rows={3} />;
-  if (me.isError) return <ErrorLine error={me.error} onRetry={() => void me.refetch()} />;
+  if (me.isPending) {
+    return (
+      <PlainLayout>
+        <LoadingRows rows={3} />
+      </PlainLayout>
+    );
+  }
+  if (me.isError) {
+    return (
+      <PlainLayout>
+        <ErrorLine error={me.error} onRetry={() => void me.refetch()} />
+      </PlainLayout>
+    );
+  }
   const membership = me.data.workspaces[0];
   if (!me.data.profile || !membership) return <Navigate to={PATHS.onboarding} replace />;
   return <WorkspaceContext.Provider value={membership}>{children}</WorkspaceContext.Provider>;
