@@ -141,7 +141,7 @@ export function RepositoriesPage() {
                     <td className="py-2.75 text-right">
                       <button
                         type="button"
-                        className="text-action inline-flex min-h-11 items-center sm:min-h-0"
+                        className="text-action tap-target"
                         onClick={() => setSelectedId(isSelected ? null : repo.repoId)}
                         aria-expanded={isSelected}
                       >
@@ -325,7 +325,7 @@ function EditPanel({
           >
             {action.pending ? "Saving…" : "Save changes"}
           </button>
-          <button type="button" className="text-action" onClick={onClose} disabled={action.pending}>
+          <button type="button" className="text-action tap-target" onClick={onClose} disabled={action.pending}>
             Cancel
           </button>
         </div>

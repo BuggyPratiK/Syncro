@@ -146,6 +146,16 @@
     color: var(--mu);
     cursor: not-allowed;
   }
+  /* Standalone actions (not links inside running text) get a 44px touch
+     height on phones; from the sm breakpoint they size to their text. */
+  .tap-target {
+    display: inline-flex;
+    align-items: center;
+    min-height: 44px;
+    @variant sm {
+      min-height: 0;
+    }
+  }
   .input {
     width: 100%;
     background: var(--sf);

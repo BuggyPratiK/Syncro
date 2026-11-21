@@ -214,15 +214,15 @@ function DestinationBlock({
         <div className="mt-4 flex flex-wrap gap-x-5 gap-y-2 text-[13px]">
           {active ? (
             <>
-              <button type="button" className="text-action" onClick={() => setMode("rename")} disabled={action.pending}>
+              <button type="button" className="text-action tap-target" onClick={() => setMode("rename")} disabled={action.pending}>
                 Rename
               </button>
-              <button type="button" className="text-action" onClick={() => setMode("replace")} disabled={action.pending}>
+              <button type="button" className="text-action tap-target" onClick={() => setMode("replace")} disabled={action.pending}>
                 Replace URL
               </button>
               <button
                 type="button"
-                className="text-action text-er"
+                className="text-action tap-target text-er"
                 onClick={() => setMode("deactivate")}
                 disabled={action.pending}
               >
@@ -232,7 +232,7 @@ function DestinationBlock({
           ) : (
             <button
               type="button"
-              className="text-action"
+              className="text-action tap-target"
               onClick={() => void setActive(true)}
               disabled={action.pending || atLimit}
             >
@@ -355,7 +355,7 @@ function RenameForm({
         >
           {action.pending ? "Saving…" : "Save name"}
         </button>
-        <button type="button" className="text-action" onClick={onClose} disabled={action.pending}>
+        <button type="button" className="text-action tap-target" onClick={onClose} disabled={action.pending}>
           Cancel
         </button>
       </div>
@@ -419,7 +419,7 @@ function ReplaceUrlForm({
         <button type="submit" className="btn-primary" disabled={action.pending || url.trim().length === 0}>
           {action.pending ? "Saving…" : "Save new URL"}
         </button>
-        <button type="button" className="text-action" onClick={onClose} disabled={action.pending}>
+        <button type="button" className="text-action tap-target" onClick={onClose} disabled={action.pending}>
           Cancel
         </button>
       </div>

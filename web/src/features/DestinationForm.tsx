@@ -77,7 +77,7 @@ export function DestinationForm({
           {action.pending ? "Saving…" : "Save destination"}
         </button>
         {onCancel ? (
-          <button type="button" className="text-action" onClick={onCancel} disabled={action.pending}>
+          <button type="button" className="text-action tap-target" onClick={onCancel} disabled={action.pending}>
             Cancel
           </button>
         ) : null}

@@ -15,7 +15,7 @@ export function AddRepositoriesPage() {
         kicker="01"
         title="Add repositories"
         actions={
-          <Link className="text-action" to={PATHS.repositories}>
+          <Link className="text-action tap-target" to={PATHS.repositories}>
             Back to Repositories
           </Link>
         }

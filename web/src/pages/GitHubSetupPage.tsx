@@ -131,7 +131,7 @@ export function GitHubSetupPage() {
         </div>
         {outcome.status !== "working" || me.isError || noWorkspace ? (
           <p className="mt-6">
-            <Link className="text-action" to={PATHS.addRepositories}>
+            <Link className="text-action tap-target" to={PATHS.addRepositories}>
               Back to Syncro
             </Link>
           </p>

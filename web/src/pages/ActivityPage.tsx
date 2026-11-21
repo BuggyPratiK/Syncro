@@ -92,7 +92,7 @@ export function ActivityPage() {
         {deliveries.hasNextPage ? (
           <button
             type="button"
-            className="text-action"
+            className="text-action tap-target"
             onClick={() => void deliveries.fetchNextPage()}
             disabled={deliveries.isFetchingNextPage}
           >

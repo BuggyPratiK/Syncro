@@ -60,7 +60,7 @@ export function ErrorLine({
       <StatusMark kind="failed" label="Failed" />
       <span>{message ?? describeError(error)}</span>
       {onRetry ? (
-        <button type="button" className="text-action text-er" onClick={onRetry}>
+        <button type="button" className="text-action tap-target text-er" onClick={onRetry}>
           {retryLabel}
         </button>
       ) : null}
@@ -201,7 +201,7 @@ export function ConfirmDialog({
         </h2>
         <div className="mt-3 text-[14px]">{children}</div>
         <div className="mt-6 flex flex-wrap justify-end gap-4">
-          <button ref={cancelRef} type="button" className="text-action" onClick={onCancel} disabled={busy}>
+          <button ref={cancelRef} type="button" className="text-action tap-target" onClick={onCancel} disabled={busy}>
             Cancel
           </button>
           <button

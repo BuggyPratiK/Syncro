@@ -359,7 +359,7 @@ function Complete() {
         <Link className="btn-primary" to={PATHS.repositories}>
           Go to Repositories
         </Link>
-        <Link className="text-action self-center" to={PATHS.activity}>
+        <Link className="text-action tap-target self-center" to={PATHS.activity}>
           View activity
         </Link>
       </p>
