@@ -11,7 +11,7 @@ import {
   type RegisterRepoBody,
   type RepoListingDto,
 } from "@contracts";
-import { useId, useMemo, useState, type FormEvent } from "react";
+import { useId, useState, type FormEvent } from "react";
 import { useApi } from "../api/api-context";
 import { ApiError, describeError } from "../api/errors";
 import { useDestinations, useInstallations, useInvalidateWorkspace, useRepos } from "../api/queries";
@@ -74,23 +74,50 @@ function ListingChooser({
   listing: RepoListingDto;
   onDone?: () => void;
 }) {
-  const api = useApi();
   const repos = useRepos(workspaceId);
+  if (repos.isPending) return <LoadingRows rows={4} />;
+  if (repos.isError) return <ErrorLine error={repos.error} onRetry={() => void repos.refetch()} />;
+  const activeIds = new Set(repos.data.filter((r) => r.isActive).map((r) => r.repoId));
+  return <ChooserForm workspaceId={workspaceId} listing={listing} activeIds={activeIds} onDone={onDone} />;
+}
+
+/**
+ * Repositories that can be added now, pre-selected in name order up to the free
+ * active-repository slots. GitHub already asked which repositories the App may
+ * read, so the usual case is to add all of them; the user can still untick any.
+ */
+function preselect(listing: RepoListingDto, activeIds: Set<string>): Set<string> {
+  const remaining = WORKSPACE_LIMITS.activeRepos - activeIds.size;
+  const eligible = [...listing.repos]
+    .filter((r) => r.admin && !activeIds.has(r.repoId))
+    .sort((a, b) => a.fullName.localeCompare(b.fullName))
+    .slice(0, Math.max(0, remaining));
+  return new Set(eligible.map((r) => r.repoId));
+}
+
+function ChooserForm({
+  workspaceId,
+  listing,
+  activeIds,
+  onDone,
+}: {
+  workspaceId: string;
+  listing: RepoListingDto;
+  activeIds: Set<string>;
+  onDone?: () => void;
+}) {
+  const api = useApi();
   const destinations = useDestinations(workspaceId);
   const invalidate = useInvalidateWorkspace(workspaceId);
   const branchId = useId();
   const destinationId = useId();
-  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [selected, setSelected] = useState<Set<string>>(() => preselect(listing, activeIds));
   const [branch, setBranch] = useState<string>(DEFAULT_WATCHED_BRANCH);
   const [destination, setDestination] = useState("");
   const [results, setResults] = useState<Record<string, RowResult>>({});
   const [busy, setBusy] = useState(false);
   const [stopError, setStopError] = useState<unknown>(null);
 
-  const activeIds = useMemo(
-    () => new Set((repos.data ?? []).filter((r) => r.isActive).map((r) => r.repoId)),
-    [repos.data],
-  );
   const activeDestinations = (destinations.data ?? []).filter((d) => d.status === "active");
   const sorted = [...listing.repos].sort((a, b) => a.fullName.localeCompare(b.fullName));
   const remaining = WORKSPACE_LIMITS.activeRepos - activeIds.size;
@@ -138,11 +165,12 @@ function ListingChooser({
     if (onDone && all.length > 0 && all.every((r) => r.ok)) onDone();
   }
 
-  if (repos.isPending) return <LoadingRows rows={4} />;
-  if (repos.isError) return <ErrorLine error={repos.error} onRetry={() => void repos.refetch()} />;
-
   return (
     <form onSubmit={submit} className="flex flex-col gap-6">
+      <p className="text-[13px] text-mu">
+        GitHub decided which repositories Syncro may read. Choose which of them post to Discord; you can
+        pause or change them later. Only repositories you administer can be added.
+      </p>
       <div>
         <SectionHeader aside={`${activeIds.size} of ${WORKSPACE_LIMITS.activeRepos} active · ${selected.size} selected`}>
           Repositories

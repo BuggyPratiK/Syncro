@@ -213,6 +213,10 @@ function StepPanel({
             )}
           </ul>
           <ConnectGitHubButton workspaceId={workspaceId} installationCount={installationCount} />
+          <p className="text-[12px] text-mu">
+            Ended up on GitHub instead of back here? The app was probably installed on that account before.
+            Uninstall it in GitHub (Settings, Applications, Installed GitHub Apps), then connect again.
+          </p>
         </StepBody>
       );
     case 2:
