@@ -9,6 +9,15 @@ import { useAuth } from "./auth-context";
  */
 export function RequireAuth({ children }: { children: ReactNode }) {
   const auth = useAuth();
+  if (auth.isSigningOut) {
+    return (
+      <PlainLayout>
+        <p role="status" className="text-mu">
+          Signing out…
+        </p>
+      </PlainLayout>
+    );
+  }
   if (auth.isLoading) {
     return (
       <PlainLayout>
@@ -25,6 +34,11 @@ export function SignInPage() {
   return (
     <PlainLayout>
       <section className="max-w-[620px]">
+        {auth.sessionEnded ? (
+          <p role="status" className="mb-6 border-y border-ru py-2.5 text-[13px] text-mu">
+            Your session has ended. Sign in again to continue.
+          </p>
+        ) : null}
         <p className="label">Syncro</p>
         <h1 className="mt-1 font-serif text-[38px] leading-tight sm:text-[44px]">
           GitHub activity, relayed to Discord.

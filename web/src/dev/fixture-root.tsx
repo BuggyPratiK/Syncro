@@ -19,8 +19,11 @@ export function FixtureRoot() {
     () => ({
       isAuthenticated: signedIn,
       isLoading: false,
+      isSigningOut: false,
+      sessionEnded: false,
       signIn: () => setSignedIn(true),
       signOut: () => setSignedIn(false),
+      endSession: () => setSignedIn(false),
       getAccessToken: async () => (signedIn ? "fixture-token" : null),
     }),
     [signedIn],

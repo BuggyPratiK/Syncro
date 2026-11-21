@@ -18,7 +18,8 @@ export function HttpApiProvider({ baseUrl, children }: { baseUrl: string; childr
       createHttpClient({
         baseUrl,
         getAccessToken: () => auth.getAccessToken(),
-        onSignInRequired: () => auth.signIn(),
+        // Never redirect from a request: show the sign-in page and let the user choose.
+        onSignInRequired: () => auth.endSession(),
       }),
     [auth, baseUrl],
   );

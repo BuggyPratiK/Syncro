@@ -12,8 +12,11 @@ export function fakeAuth(overrides: Partial<AuthState> = {}): AuthState {
   return {
     isAuthenticated: true,
     isLoading: false,
+    isSigningOut: false,
+    sessionEnded: false,
     signIn: () => {},
     signOut: () => {},
+    endSession: () => {},
     getAccessToken: async () => "test-token",
     ...overrides,
   };
