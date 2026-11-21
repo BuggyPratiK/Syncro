@@ -30,7 +30,7 @@ export function buildPrEmbed(payload: NotificationPayload): DiscordEmbed {
 
   if (!pr) {
     return {
-      title: `🔀 Pull Request - ${payload.repoFullName}`,
+      title: `Pull Request - ${payload.repoFullName}`,
       description: `Pull request activity in **${payload.repoFullName}**`,
       color: DISCORD_COLOR_GREEN,
       fields: [],
@@ -45,34 +45,29 @@ export function buildPrEmbed(payload: NotificationPayload): DiscordEmbed {
 
   let color = DISCORD_COLOR_GREEN;
   let actionTitle = "opened";
-  let icon = "🔀";
 
   if (isMerged) {
     color = DISCORD_COLOR_PURPLE;
     actionTitle = `merged into ${pr.baseBranch}`;
-    icon = "🟣";
   } else if (pr.action === "closed") {
     color = DISCORD_COLOR_RED;
     actionTitle = "closed without merging";
-    icon = "🔴";
   } else if (pr.action === "reopened") {
     color = DISCORD_COLOR_GREEN;
     actionTitle = "reopened";
-    icon = "🔄";
   } else if (isDraft) {
     color = DISCORD_COLOR_GRAY;
     actionTitle = "opened as draft";
-    icon = "📝";
   }
 
   const fields: Array<{ name: string; value: string; inline?: boolean }> = [
     {
-      name: "🎯 Branches",
+      name: "Branches",
       value: `\`${pr.headBranch}\` ➔ \`${pr.baseBranch}\``,
       inline: true,
     },
     {
-      name: "📊 Changes",
+      name: "Changes",
       value: `${formatDiff(payload.totalAdditions, payload.totalDeletions)} • ${payload.totalFilesChanged} file${payload.totalFilesChanged !== 1 ? "s" : ""} changed`,
       inline: true,
     },
@@ -80,7 +75,7 @@ export function buildPrEmbed(payload: NotificationPayload): DiscordEmbed {
 
   if (pr.body) {
     fields.push({
-      name: "📝 Description",
+      name: "Description",
       value: truncateMessage(pr.body, 200),
       inline: false,
     });
@@ -89,26 +84,26 @@ export function buildPrEmbed(payload: NotificationPayload): DiscordEmbed {
   // Contributor action guidance
   if (isMerged) {
     fields.push({
-      name: `🔄 Sync your local branch with ${pr.baseBranch}`,
+      name: `Sync your local branch with ${pr.baseBranch}`,
       value: `\`\`\`bash\ngit pull origin ${pr.baseBranch}\n\`\`\``,
       inline: false,
     });
   } else if (pr.action === "opened" || pr.action === "reopened") {
     fields.push({
-      name: "👀 Review Required",
+      name: "Review Required",
       value: `Review the proposed changes before merging into \`${pr.baseBranch}\`.`,
       inline: false,
     });
   }
 
   fields.push({
-    name: "🔗 Links",
+    name: "Links",
     value: `[View Pull Request](${pr.url}) • [Repository](${payload.repoUrl})`,
     inline: false,
   });
 
   return {
-    title: `${icon} PR #${pr.number} ${actionTitle} - ${payload.repoFullName}`,
+    title: `PR #${pr.number} ${actionTitle} - ${payload.repoFullName}`,
     description: `**${pr.title}**\nOpened by **${pr.authorName}**`,
     color,
     fields,

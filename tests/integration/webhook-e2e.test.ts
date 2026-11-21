@@ -383,8 +383,8 @@ describe("Webhook Pipeline E2E Integration Tests", () => {
       const embed = discordCalls[0].payload.embeds[0];
       expect(embed.title).toContain("PR #42 opened - acme/syncro");
       expect(embed.description).toContain("feat: add user authentication");
-      expect(embed.fields.some((f: any) => f.name === "🎯 Branches")).toBe(true);
-      expect(embed.fields.some((f: any) => f.name === "👀 Review Required")).toBe(true);
+      expect(embed.fields.some((f: any) => f.name === "Branches")).toBe(true);
+      expect(embed.fields.some((f: any) => f.name === "Review Required")).toBe(true);
     });
 
     it("processes a pull_request closed & merged event with purple embed and git pull instruction", async () => {

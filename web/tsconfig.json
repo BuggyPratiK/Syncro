@@ -1,0 +1,29 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "jsx": "react-jsx",
+    // Explicit, as in every tsconfig of this repository (TypeScript 6).
+    "types": ["vite/client", "node"],
+    "strict": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "noImplicitReturns": true,
+    "noFallthroughCasesInSwitch": true,
+    "isolatedModules": true,
+    // Types for the plain-JavaScript CI script imported by its tests.
+    "allowJs": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+    "noEmit": true,
+    "paths": {
+      "@contracts": ["../src/contracts/index.ts"],
+      "@contracts/*": ["../src/contracts/*"],
+      // The contract files resolve `zod` from web/node_modules, as Vite does.
+      "zod": ["./node_modules/zod"]
+    }
+  },
+  "include": ["src", "scripts", "vite.config.ts", "eslint.config.js"]
+}
