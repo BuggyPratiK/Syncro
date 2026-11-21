@@ -8,8 +8,11 @@ import { LogtoAuth } from "./auth/logto-auth";
 import { LogtoCallback } from "./auth/LogtoCallback";
 import { ConfigMissing } from "./components/ConfigMissing";
 import { readConfig } from "./config";
+import { applySavedTheme } from "./lib/theme";
 import { createQueryClient } from "./query-client";
 import "./styles.css";
+
+applySavedTheme();
 
 const root = createRoot(document.getElementById("root")!);
 const queryClient = createQueryClient();

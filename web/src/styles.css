@@ -42,7 +42,8 @@
 
 /*
  * Theme tokens. Paper (light) is the default; Ink (dark) is tuned separately,
- * not inverted, and follows the system preference.
+ * not inverted. Ink follows the system preference unless the user chose a
+ * theme, which sets data-theme on <html> (see src/lib/theme.ts).
  */
 :root {
   color-scheme: light;
@@ -59,7 +60,7 @@
 }
 
 @media (prefers-color-scheme: dark) {
-  :root {
+  :root:not([data-theme="light"]) {
     color-scheme: dark;
     --bg: #151310;
     --sf: #1d1a16;
@@ -72,6 +73,20 @@
     --wa: #dda94a;
     --er: #f28d72;
   }
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --bg: #151310;
+  --sf: #1d1a16;
+  --ink: #ede6d8;
+  --mu: #a39b8c;
+  --ru: #37322b;
+  --ac: #f0795a;
+  --on: #151310;
+  --ok: #6fbf8a;
+  --wa: #dda94a;
+  --er: #f28d72;
 }
 
 @theme inline {
