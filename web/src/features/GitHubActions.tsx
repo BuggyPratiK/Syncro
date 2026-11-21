@@ -10,6 +10,7 @@ import { useApi } from "../api/api-context";
 import { ErrorLine } from "../components/ui";
 import { rememberAuthorizeInstallation } from "../github/pending-authorize";
 import { goToGitHub } from "../github/redirect";
+import { formatTime } from "../lib/format";
 import { useAction } from "../lib/use-action";
 
 export function ConnectGitHubButton({
@@ -64,7 +65,11 @@ export function LoadRepositoriesButton({
   const api = useApi();
   const action = useAction();
   const groupId = useId();
-  const active = installations.filter((i) => i.status === "active");
+  // Newest first: an uninstalled-and-reinstalled app leaves an older entry for
+  // the same account, and the most recent one is the live installation.
+  const active = installations
+    .filter((i) => i.status === "active")
+    .sort((a, b) => b.claimedAt.localeCompare(a.claimedAt));
   const [chosen, setChosen] = useState<string | undefined>(active[0]?.installationId);
   const selected = active.find((i) => i.installationId === chosen) ?? active[0];
 
@@ -96,8 +101,14 @@ export function LoadRepositoriesButton({
               />
               <span className="font-mono text-[12px]">{i.accountLogin}</span>
               <span className="text-[12px] text-mu">{i.accountType === "User" ? "Personal" : "Organization"}</span>
+              <span className="ml-auto text-right font-mono text-[12px] text-mu">
+                connected {formatTime(i.claimedAt)} · ID {i.installationId}
+              </span>
             </label>
           ))}
+          <p className="mt-2 text-[12px] text-mu">
+            Seeing the same account twice? The app was reinstalled on GitHub; choose the most recent one.
+          </p>
         </fieldset>
       ) : (
         <p className="text-[13px]">
