@@ -1,3 +1,4 @@
+import { release } from "node:os";
 import { fileURLToPath } from "node:url";
 import tailwindcss from "@tailwindcss/vite";
 import react from "@vitejs/plugin-react";
@@ -6,6 +7,12 @@ import { defineConfig } from "vitest/config";
 // The API contract lives in the backend tree and is the only backend code the
 // web app may import (enforced by the lint configuration).
 const contractsDir = fileURLToPath(new URL("../src/contracts", import.meta.url));
+
+// Under WSL, files on a Windows drive (/mnt/<drive>) do not raise Linux file
+// events when they are edited from Windows, so the dev server would keep
+// serving stale modules. Poll for changes only in that setup.
+const wslWindowsDrive =
+  process.platform === "linux" && /microsoft/i.test(release()) && process.cwd().startsWith("/mnt/");
 
 export default defineConfig({
   plugins: [react(), tailwindcss()],
@@ -21,6 +28,7 @@ export default defineConfig({
     port: 5173,
     strictPort: true,
     fs: { allow: [".", contractsDir] },
+    ...(wslWindowsDrive ? { watch: { usePolling: true, interval: 300 } } : {}),
   },
   build: {
     target: "es2022",
